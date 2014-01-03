@@ -7,6 +7,7 @@
 //
 
 #import "GIClient.h"
+#import "GIClientStates.h"
 
 #import "AFJSONRequestOperation.h"
 
@@ -38,7 +39,6 @@
 @synthesize tickerList, tradeTimeList, minisessions;
 
 static NSString *kEendPoint = @"https://goinvest.micex.ru";//@"http://172.20.9.167:8080";//@"https://goinvest.micex.ru";
-static NSString *kKeyState = @"GIClientState";
 
 static NSString *kStatusMessage01 = @"Could not download marketplaces!";
 static NSString *kStatusMessage02 = @"Could not find MXZERNO in marketplaces!";
@@ -63,7 +63,6 @@ static NSString *kStatusMessage15 = @"";
         self.login = alogin;
         self.pwd = apwd;
         self.channel = [[GIChannel alloc] initWithURL:[NSURL URLWithString:kEendPoint] Options:nil Delegate:self];
-        self.minisessions = [[NSMutableDictionary alloc] init];
     }
     return self;
 }
@@ -135,6 +134,7 @@ static NSString *kStatusMessage15 = @"";
     
     NSArray *tickerRows = [tickers valueForKey:@"data"];
     NSArray *timesRows = [times valueForKey:@"data"];
+    NSMutableDictionary *res = [[NSMutableDictionary alloc] init];
     for (NSArray *tickerRow in tickerRows) {
         GIMinisession *s = [[GIMinisession alloc] init];
         s.longId = [tickerRow objectAtIndex:stindex];
@@ -148,7 +148,9 @@ static NSString *kStatusMessage15 = @"";
                 NSMutableDictionary *xd = [@{@"time" : [timeRow objectAtIndex:tTimeIndex], @"status" : [timeRow objectAtIndex:tStatusIndex]} mutableCopy];
                 [t setValue:xd forKey:[timeRow objectAtIndex:tTypeIndex]];
             }
+        [res setValue:s forKey:s.longId];
     }
+    self.minisessions = res;
 }
 
 - (void) gotFrame:(StompFrame *)f {
@@ -198,7 +200,7 @@ static NSString *kStatusMessage15 = @"";
     if (state == astate) return;
     state = astate;
     substate = 0;
-    [self didChangeValueForKey:kKeyState];
+    //[self didChangeValueForKey:kKeyState];
 }
 
 @end
