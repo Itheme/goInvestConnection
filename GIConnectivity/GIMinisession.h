@@ -11,8 +11,9 @@
 typedef enum GIMinisessionStatusEnum {
     msUnknown = 0,
     msWaiting = 1,
-    msRunning = 2,
-    msEnded = 3
+    msStartingSoon = 2,
+    msRunning = 3,
+    msEnded = 4
 } GIMinisessionStatus;
 
 static NSString *reuseIdUnknown = @"bad session state";
@@ -25,6 +26,7 @@ static NSString *reuseIdEnded = @"session is ended";
 @property (nonatomic, readonly, retain) NSString *longId;
 @property (nonatomic, readonly, retain) NSString *shortId;
 @property (nonatomic, readonly, retain) NSString *caption;
+@property (nonatomic, readonly, getter = getScheduleString) NSString *scheduleString;
 @property (nonatomic, retain) NSString *instrid;
 @property (nonatomic, readonly, retain) NSMutableDictionary *times;
 @property (nonatomic, readonly, getter = getStatus) GIMinisessionStatus status;
@@ -36,7 +38,10 @@ static NSString *reuseIdEnded = @"session is ended";
 - (void) setEvent:(NSString *)event EventStatus:(NSString *)eventStatus AtTime:(NSString *)timeStr;
 - (BOOL) hasNextUIRefreshTime:(CFAbsoluteTime *)t;
 - (NSString *) reuseId;
+- (NSComparisonResult) comareWith:(GIMinisession *)s;
 
 @end
+
+void setMedvedevDelta(CFTimeInterval medvDelta);
 
 CFAbsoluteTime CFAbsoluteTimeGetMedvedev();

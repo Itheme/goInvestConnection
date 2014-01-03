@@ -9,7 +9,7 @@
 #import "GIMinisession.h"
 
 @interface GIMinisession () {
-    CFAbsoluteTime startTime, endTime;
+    CFAbsoluteTime endTime;
     BOOL started, ended;
     GIMinisessionStatus lastCheckedStatus;
     CFAbsoluteTime lastCheckedTime;
@@ -20,18 +20,27 @@
 @property (nonatomic, retain) NSString *caption;
 //@property (nonatomic, retain) NSString *instrid;
 @property (nonatomic, retain) NSMutableDictionary *times;
+@property (nonatomic) CFAbsoluteTime startTime;
 
 @end
 
+CFTimeInterval medvedDelta = 0.0;
+
+void setMedvedevDelta(CFTimeInterval medvDelta) {
+    medvedDelta = medvDelta;
+}
+
 CFAbsoluteTime CFAbsoluteTimeGetMedvedev() {
-    return CFAbsoluteTimeGetCurrent() - (60.0*60.0);
+    return CFAbsoluteTimeGetCurrent() + medvedDelta;// (60.0*60.0);
 }
 
 @implementation GIMinisession
 
 @synthesize longId, shortId, caption, times, instrid;
 @synthesize status;
+@synthesize startTime;
 @synthesize timeTillRun, timeTillStop, percentDone;
+@synthesize scheduleString;
 
 - (id) initWithLongId:(NSString *)alongId Caption:(NSString *)cap {
     self = [super init];
@@ -47,8 +56,8 @@ CFAbsoluteTime CFAbsoluteTimeGetMedvedev() {
 
 - (void) setEvent:(NSString *)event EventStatus:(NSString *)eventStatus AtTime:(NSString *)timeStr OfDate:(NSDate *)date {
     NSDateFormatter* dateFormatter = [[NSDateFormatter alloc] init];
-    dateFormatter.dateFormat = @"HH:mm";
-    NSTimeZone *localZone = [NSTimeZone localTimeZone];
+    dateFormatter.dateFormat = @"HH:mm:ss";
+    //NSTimeZone *localZone = [NSTimeZone localTimeZone];
     //dateFormatter.timeZone = localZone;//[NSTimeZone localTimeZone];
     dateFormatter.defaultDate = date;
     NSDate *d = [dateFormatter dateFromString:timeStr];
@@ -63,8 +72,8 @@ CFAbsoluteTime CFAbsoluteTimeGetMedvedev() {
             @throw [NSException exceptionWithName:@"wrong status" reason:[NSString stringWithFormat:@"%@ at %@", eventStatus, timeStr, nil] userInfo:nil];
     if ([event hasPrefix:@"4"]) {
         started = !active;
-        startTime = [d timeIntervalSinceReferenceDate];
-        startTime -= 60.0*60.0;
+        self.startTime = [d timeIntervalSinceReferenceDate];
+        //startTime -= 60.0*60.0;
         //startTime += [localZone secondsFromGMT];
         //startTime -= CFAbsoluteTimeGetCurrent();
         return;
@@ -72,10 +81,13 @@ CFAbsoluteTime CFAbsoluteTimeGetMedvedev() {
     if ([event hasPrefix:@"5"]) {
         ended = !active;
         endTime = [d timeIntervalSinceReferenceDate];// + [localZone secondsFromGMT];
-        endTime -= 60.0*60.0;
+        //endTime -= 60.0*60.0;
         //endTime += [localZone secondsFromGMT];
         return;
     }
+    NSLog(@"What an event: %@ ???", event);
+    return;
+
 }
 
 - (void) setEvent:(NSString *)event EventStatus:(NSString *)eventStatus AtTime:(NSString *)timeStr {
@@ -102,11 +114,13 @@ CFAbsoluteTime CFAbsoluteTimeGetMedvedev() {
         started = true;
         return [self getStatus];
     }
+    if (d < 5*60)
+        return msStartingSoon;
     return msWaiting;
 }
 
 - (CFAbsoluteTime) getTimeTillRun {
-    return startTime - CFAbsoluteTimeGetMedvedev();
+    return self.startTime - CFAbsoluteTimeGetMedvedev();
 }
 
 - (CFAbsoluteTime) getTimeTillEnd {
@@ -115,7 +129,7 @@ CFAbsoluteTime CFAbsoluteTimeGetMedvedev() {
 
 - (float) getPercentDone {
     CFTimeInterval total = endTime - startTime;
-    return (CFAbsoluteTimeGetCurrent() - startTime) / total;
+    return (CFAbsoluteTimeGetMedvedev() - self.startTime) / total;
 }
 
 - (BOOL) hasNextUIRefreshTime:(CFAbsoluteTime *)t {
@@ -124,14 +138,15 @@ CFAbsoluteTime CFAbsoluteTimeGetMedvedev() {
     CFAbsoluteTime n = CFAbsoluteTimeGetMedvedev();
     if ((lastCheckedStatus == ns) || (lastCheckedStatus == msUnknown))
         switch (ns) {
-            case msUnknown: return NO;
-            case msWaiting:
-                if (startTime - n > 5*60) // more than five minutes till start
-                    *t = startTime - 5*60 + 1;
+            case msUnknown:  return NO;
+            case msStartingSoon:
+                *t = 1.0;
                 break;
-            case msRunning:
+            case msWaiting: // more than five minutes till start
+                *t = startTime - 5*60 + 1;
                 break;
-            case msEnded: return NO;
+            case msRunning: break;
+            case msEnded:   return NO;
         }
     lastCheckedStatus = ns;
     lastCheckedTime = n;
@@ -140,13 +155,35 @@ CFAbsoluteTime CFAbsoluteTimeGetMedvedev() {
 
 - (NSString *) reuseId {
     switch (lastCheckedStatus) {
-        case msUnknown: return reuseIdUnknown;
-        case msWaiting:
-            if (startTime - lastCheckedTime > 5*60) return reuseIdWaiting;
-            return reuseIdStartingSoon;
-        case msRunning: return self.longId;
-        case msEnded:   return reuseIdEnded;
+        case msUnknown:      return reuseIdUnknown;
+        case msWaiting:      return reuseIdWaiting;
+        case msStartingSoon: return reuseIdStartingSoon;
+        case msRunning:      return self.longId;
+        case msEnded:        return reuseIdEnded;
     }
+}
+
+- (NSString *) getScheduleString {
+    NSDateFormatter* dateFormatter = [[NSDateFormatter alloc] init];
+    dateFormatter.dateFormat = @"HH:mm";
+    NSString *res;
+    if (startTime > 0) {
+        res = [dateFormatter stringFromDate:[NSDate dateWithTimeIntervalSinceReferenceDate:startTime]];
+        if (endTime > 0)
+            return [NSString stringWithFormat:@"%@ - %@", res, [dateFormatter stringFromDate:[NSDate dateWithTimeIntervalSinceReferenceDate:endTime]], nil];
+        return [NSString stringWithFormat:@"%@ - ...", res, nil];
+    }
+    if (endTime > 0)
+        return [NSString stringWithFormat:@"... - %@", [dateFormatter stringFromDate:[NSDate dateWithTimeIntervalSinceReferenceDate:endTime]], nil];
+    return @"";
+}
+
+- (NSComparisonResult) comareWith:(GIMinisession *)s {
+    if (startTime > s.startTime + .9)
+        return 1;
+    if (startTime > s.startTime - 0.9)
+        return 0;
+    return -1;
 }
 
 @end

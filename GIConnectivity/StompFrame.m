@@ -82,10 +82,6 @@
     return [NSString stringWithFormat:@"%@\n%@\n\0", res, [self encodedHeaders], nil];
 }
 
-- (id)initWithCoder:(NSCoder *)aDecoder {
-#warning unimplemented
-}
-
 - (id) initWithCommand:(StompCommand) sc Headers:(NSDictionary *) h {
     self = [super init];
     if (self) {

@@ -8,6 +8,8 @@
 
 #import <Foundation/Foundation.h>
 
+#define kTOTALCSPHLEN 20
+
 @class GIChannel;
 
 @interface GIReader : NSObject <NSStreamDelegate, NSURLConnectionDelegate, NSURLConnectionDataDelegate> { // <NSURLConnectionDownloadDelegate, NSURLConnectionDataDelegate> {

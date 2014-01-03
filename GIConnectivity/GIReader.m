@@ -11,7 +11,6 @@
 #import "StompFrame.h"
 #import "AFURLConnectionOperation.h"
 
-
 enum CspFrameParseResult {
     prNotAFrame = 0,
     prIncompleteFrame = -1,
@@ -38,6 +37,9 @@ enum CspFrameParseResult {
 @synthesize httpMessageRef, closed;
 @synthesize theRequest, readerOperation;
 //@synthesize accumulator;
+
+static char cspHeader[] = {'0', '0', '1', '0'};
+
 
 - (void) loadistr:(id) iistr {
     NSInputStream *istr = iistr;
@@ -188,8 +190,21 @@ enum CspFrameParseResult {
 }
 
 - (int) bufferHasStompFrame:(const uint8_t *)buffer maxLength:(NSUInteger)len {
-    if (len > 20) {
-        NSString *s = [[NSString alloc] initWithBytes:buffer length:20 encoding:NSUTF8StringEncoding];
+    if ((len > kTOTALCSPHLEN) && (memcmp(cspHeader, buffer, 4) == 0)) {
+        int aseqnum, length;
+        char *x = (char *)(buffer + 4);
+        sscanf(x, "%8x%8x", &aseqnum, &length);
+        if ((aseqnum >= seqnum - 20) && (aseqnum < seqnum + 20)) {
+            if (length + kTOTALCSPHLEN - 1 > len)
+                return prIncompleteFrame;
+            NSLog(@"seqnum = %d", aseqnum);
+            seqnum = aseqnum;
+            return length;
+        } else
+            return prBadSeqNum;
+
+
+/*        NSString *s = [[NSString alloc] initWithBytes:buffer length:20 encoding:NSUTF8StringEncoding];
         if (s)
             if ([s hasPrefix:@"0010"]) {
                 NSString *xs = [NSString stringWithFormat:@"0x%@", [s substringWithRange:NSMakeRange(4, 8)], nil];
@@ -206,20 +221,19 @@ enum CspFrameParseResult {
                     return length;
                 } else
                     return prBadSeqNum;
-            }
+            }*/
     }
     return prNotAFrame;
 }
 
 - (NSInteger)writeKnownBuffer:(const uint8_t *)buffer cspLength:(NSUInteger) cspLen maxLength:(NSUInteger)maxLen {
-    const uint8_t *ptr = buffer + 20;
+    const uint8_t *ptr = buffer + kTOTALCSPHLEN;
     [self writeGluedData:(char *)ptr Length:cspLen];
-    int xlen = cspLen + 20;
+    int xlen = cspLen + kTOTALCSPHLEN;
     if (xlen < maxLen)
         return xlen + [self write:ptr + cspLen maxLength:maxLen - xlen];
     return maxLen;
 }
-#warning make 20 a constant
 
 // stream methods
 
@@ -253,14 +267,14 @@ enum CspFrameParseResult {
     memcpy(rawAccData + rused, buffer, len);
     rused += len;
     char *ptr = rawAccData;
-    while (rused > 20) {
+    while (rused > kTOTALCSPHLEN) {
         int res = [self bufferHasStompFrame:(uint8_t *)ptr maxLength:rused];
         if ((res == prNotAFrame) || (res == prBadSeqNum))
             @throw [NSException exceptionWithName:@"CSP layer exception" reason:@"WTF!?" userInfo:nil];
         if (res == prIncompleteFrame) break;
-        ptr += 20;
+        ptr += kTOTALCSPHLEN;
         [self writeGluedData:ptr Length:res];
-        rused -= res + 20;
+        rused -= res + kTOTALCSPHLEN;
         ptr += res;
     }
     if (rused > 0) {

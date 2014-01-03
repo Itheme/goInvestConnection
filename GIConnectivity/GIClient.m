@@ -13,6 +13,8 @@
 
 @interface GIClient () {
     int substate;
+    int timeDeltaCount;
+    CFTimeInterval timeDelta[5];
 }
 
 @property (nonatomic, setter = setState:) GIClientState state;
@@ -24,7 +26,9 @@
 
 // parsing stuff
 @property (nonatomic, retain) id tickerList;
-@property (nonatomic, retain) id tradeTimeList;
+@property (nonatomic, retain) NSArray *tradeTimeLists;
+
+@property (nonatomic) BOOL minisessionsWasBuilt;
 
 @property (nonatomic, retain) NSDictionary *minisessions;
 
@@ -36,7 +40,7 @@
 @synthesize channel;
 @synthesize lastStatusMessage;
 
-@synthesize tickerList, tradeTimeList, minisessions;
+@synthesize tickerList, tradeTimeLists, minisessions;
 
 static NSString *kEendPoint = @"https://goinvest.micex.ru";//@"http://172.20.9.167:8080";//@"https://goinvest.micex.ru";
 
@@ -145,12 +149,47 @@ static NSString *kStatusMessage15 = @"";
     self.state = csPseudoConnect;
 }
 
+- (NSDictionary *) extractTimes {
+    NSArray *t = tradeTimeLists;
+    NSDictionary *times = nil;
+    for (id x in t)
+        if ([x isKindOfClass:[NSDictionary class]])
+            times = x;
+        else
+            self.tradeTimeLists = x;
+    if ([self.tradeTimeLists isEqual:t]) self.tradeTimeLists = nil; // only one dictionary
+    return times;
+}
+
+- (void) addUnparsedTimeTableLists {
+    NSDictionary *times = [self extractTimes];
+    if (times) {
+        NSArray *columns = [times valueForKey:@"columns"];
+        NSUInteger tTickerIndex = [columns indexOfObject:@"TICKER"];
+        NSUInteger tTimeIndex = [columns indexOfObject:@"TIME"];
+        NSUInteger tTypeIndex = [columns indexOfObject:@"TYPE"];
+        NSUInteger tInstrIndex = [columns indexOfObject:@"INSTRID"];
+        NSUInteger tStatusIndex = [columns indexOfObject:@"STATUS"];
+        NSArray *timesRows = [times valueForKey:@"data"];
+        for (GIMinisession *s in self.minisessions) {
+            for (NSArray *timeRow in timesRows)
+                if ([[timeRow objectAtIndex:tTickerIndex] isEqualToString:s.shortId]) {
+                    if (s.instrid == nil)
+                        s.instrid = [timeRow objectAtIndex:tInstrIndex];
+                    [s setEvent:[timeRow objectAtIndex:tTypeIndex] EventStatus:[timeRow objectAtIndex:tStatusIndex] AtTime:[timeRow objectAtIndex:tTimeIndex]];
+                }
+        }
+        [self addUnparsedTimeTableLists];
+    }
+}
+
 - (void) buildMiniSessionsTable {
     NSDictionary *tickers = tickerList;
-    NSDictionary *times = tradeTimeList;
     NSArray *columns = [tickers valueForKey:@"columns"];
     NSUInteger stindex = [columns indexOfObject:@"TICKER"];
     NSUInteger scindex = [columns indexOfObject:@"CAPTION"];
+
+    NSDictionary *times = [self extractTimes];
     columns = [times valueForKey:@"columns"];
     NSUInteger tTickerIndex = [columns indexOfObject:@"TICKER"];
     NSUInteger tTimeIndex = [columns indexOfObject:@"TIME"];
@@ -163,19 +202,59 @@ static NSString *kStatusMessage15 = @"";
     NSMutableDictionary *res = [[NSMutableDictionary alloc] init];
     for (NSArray *tickerRow in tickerRows) {
         GIMinisession *s = [[GIMinisession alloc] initWithLongId:[tickerRow objectAtIndex:stindex] Caption:[tickerRow objectAtIndex:scindex]];
-        NSMutableDictionary *t = [[NSMutableDictionary alloc] init];
         for (NSArray *timeRow in timesRows)
             if ([[timeRow objectAtIndex:tTickerIndex] isEqualToString:s.shortId]) {
                 if (s.instrid == nil)
                     s.instrid = [timeRow objectAtIndex:tInstrIndex];
-                NSMutableDictionary *xd = [@{@"time" : [timeRow objectAtIndex:tTimeIndex], @"status" : [timeRow objectAtIndex:tStatusIndex]} mutableCopy];
-                [t setValue:xd forKey:[timeRow objectAtIndex:tTypeIndex]];
                 [s setEvent:[timeRow objectAtIndex:tTypeIndex] EventStatus:[timeRow objectAtIndex:tStatusIndex] AtTime:[timeRow objectAtIndex:tTimeIndex]];
             }
         //[s importTimeTable:t];
         [res setValue:s forKey:s.longId];
     }
     self.minisessions = res;
+    [self addUnparsedTimeTableLists];
+}
+
+- (BOOL) enoughTimeData:(NSDictionary *)timeData {
+    // like
+    //                2012-12-03 15:56:35.205 GITest[13921:16e03] TESYSTIME: {
+    //                    columns =     (
+    //                                   DATE,
+    //                                   TIME
+    //                                   );
+    //                    data =     (
+    //                                (
+    //                                 "2012-12-03",
+    //                                 "15:56:29"
+    //                                 )
+    //                                );
+    //                    properties =     {
+    //                        seqnum = 0;
+    //                        type = snapshot;
+    //                    };
+
+    NSArray *columns = [timeData valueForKey:@"columns"];
+    NSArray *data = [timeData valueForKey:@"data"];
+    data = [data lastObject];
+    NSUInteger timeIndex = [columns indexOfObject:@"TIME"];
+    //NSUInteger dateIndex = [columns indexOfObject:@"DATE"];
+    NSString *timeValue = [data objectAtIndex:timeIndex];
+    //NSString *dateValue = [data objectAtIndex:dateIndex];
+
+    NSDateFormatter* dateFormatter = [[NSDateFormatter alloc] init];
+    //dateFormatter.dateFormat = @"YYYY-MM-DDHH:mm:ss";
+    dateFormatter.dateFormat = @"HH:mm:ss";
+    dateFormatter.defaultDate = [NSDate date];
+    NSDate *d = [dateFormatter dateFromString:timeValue];//[NSString stringWithFormat:@"%@%@", dateValue, timeValue, nil]];
+    timeDelta[timeDeltaCount++] = [d timeIntervalSinceReferenceDate] - CFAbsoluteTimeGetCurrent();
+    if (timeDeltaCount > 4) {
+        CFTimeInterval t = timeDelta[--timeDeltaCount];
+        while (timeDeltaCount)
+            t += timeDelta[--timeDeltaCount];
+        setMedvedevDelta(t / 5);
+        return YES;
+    }
+    return NO;
 }
 
 - (void) gotFrame:(StompFrame *)f {
@@ -187,10 +266,17 @@ static NSString *kStatusMessage15 = @"";
             [self.channel.writer sendGetTickers:@"marketplace=MXZERNO"];
             //[self.channel scheduleSubscriptionRequest:@"lasttrades" Param:[NSString stringWithFormat:@"ticker='%@'", @"MXZERNO.GSEL.LOT121025010", nil]];
             [self.channel scheduleSubscriptionRequest:@"tradetime" Param:@"marketplace=MXZERNO" Success:^(StompFrame *f) {
-                this.tradeTimeList = f.jsonData;
-                [this.channel unsubscribe:@"tradetime" Param:@"marketplace=MXZERNO"];
-                if (this.tickerList)
-                    [this buildMiniSessionsTable];
+                if (this.tradeTimeLists)
+                    this.tradeTimeLists = @[this.tradeTimeLists, f.jsonData];
+                else
+                    this.tradeTimeLists = @[f.jsonData];
+                //[this.channel unsubscribe:@"tradetime" Param:@"marketplace=MXZERNO"];
+                if (this.tickerList) {
+                    if (this.minisessionsWasBuilt)
+                        [this addUnparsedTimeTableLists];
+                    else
+                        [this buildMiniSessionsTable];
+                }
             } Failure:^(NSString *errorMessage) {
                 NSLog(@"Failure block 2");
             }];//[NSString stringWithFormat:@"ticker='%@'", @"MXZERNO.GSEL.LOT121025101" /*@"MXZERNO.GSEL.LOT121025010"*/, nil]];
@@ -199,24 +285,8 @@ static NSString *kStatusMessage15 = @"";
                 //[this.channel unsubscribe:@"tradetime" Param:@"marketplace=MXZERNO"];
                 //if (this.tickerList)
                     //[this buildMiniSessionsTable];
-#warning Parse time here:
-                
-//                2012-12-03 15:56:35.205 GITest[13921:16e03] TESYSTIME: {
-//                    columns =     (
-//                                   DATE,
-//                                   TIME
-//                                   );
-//                    data =     (
-//                                (
-//                                 "2012-12-03",
-//                                 "15:56:29"
-//                                 )
-//                                );
-//                    properties =     {
-//                        seqnum = 0;
-//                        type = snapshot;
-//                    };
-                [this.channel unsubscribe:@"tesystime" Param:@"marketplace=MXZERNO"];
+                if ([this enoughTimeData:f.jsonData])
+                    [this.channel unsubscribe:@"tesystime" Param:@"marketplace=MXZERNO"];
             } Failure:^(NSString *errorMessage) {
                 NSLog(@"Failure block 3");
             }];//[NSString stringWithFormat:@"ticker='%@'", @"MXZERNO.GSEL.LOT121025101" /*@"MXZERNO.GSEL.LOT121025010"*/, nil]];
@@ -225,8 +295,12 @@ static NSString *kStatusMessage15 = @"";
         case scREPLY:
             if ([f.destination isEqualToString:@"list"]) { // tickers
                 this.tickerList = f.jsonData;
-                if (this.tradeTimeList)
-                    [this buildMiniSessionsTable];
+                if (this.tradeTimeLists) {
+                    if (this.minisessionsWasBuilt)
+                        [this addUnparsedTimeTableLists];
+                    else
+                        [this buildMiniSessionsTable];
+                }
             }
             break;
         case scCLOSED:
