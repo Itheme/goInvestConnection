@@ -12,7 +12,6 @@
 #import "AFJSONRequestOperation.h"
 
 @interface GIClient () {
-    int substate;
     int timeDeltaCount;
     CFTimeInterval timeDelta[5];
 }
@@ -21,7 +20,7 @@
 @property (nonatomic, retain) NSString *login;
 @property (nonatomic, retain) NSString *pwd;
 @property (nonatomic, retain) NSString *lastStatusMessage;
-
+@property (nonatomic) int substate;
 @property (nonatomic, retain) GIChannel *channel;
 
 // parsing stuff
@@ -39,6 +38,7 @@
 @synthesize state, login, pwd;
 @synthesize channel;
 @synthesize lastStatusMessage;
+@synthesize substate;
 
 @synthesize tickerList, tradeTimeLists, minisessions;
 
@@ -72,7 +72,7 @@ static NSString *kStatusMessage15 = @"";
 }
 
 - (void) marketLoaded:(NSArray *)marketPlaces {
-    if ((state == csConnecting) || (substate == 0)) {
+    if ((state == csConnecting) || (substate == 1)) {
         for (NSDictionary *mp in marketPlaces)
             if ([[mp valueForKey:@"id"] isEqualToString:@"MXZERNO"]) {
                 self.channel.channelId = [mp valueForKey:@"channel"];
@@ -82,7 +82,7 @@ static NSString *kStatusMessage15 = @"";
                     self.lastStatusMessage = kStatusMessage01;
                     self.state = csDisconnectedWithProblem;
                 } else {
-                    substate = 1;
+                    substate = 2;
                 }
                 return;
             }
@@ -99,12 +99,13 @@ static NSString *kStatusMessage15 = @"";
 - (void) connect {
     if ((state == csDisconnected) || (state == csDisconnectedWithProblem)) {
         self.state = csConnecting;
-        substate = 0;
+        self.substate = 0;
         __block GIClient *this = self;
         NSURL *url = [NSURL URLWithString:@"https://goinvest.micex.ru/statics/marketplaces.json"];
         NSURLRequest *request = [NSURLRequest requestWithURL:url];
         AFJSONRequestOperation *operation = [AFJSONRequestOperation JSONRequestOperationWithRequest:request success:^(NSURLRequest *request, NSHTTPURLResponse *response, id JSON) {
             NSArray *marketPlaces = [JSON valueForKey:@"marketplaces"];
+            self.substate = 1;
             [this marketLoaded:marketPlaces];
         } failure:^(NSURLRequest *request, NSHTTPURLResponse *response, NSError *error, id JSON) {
             self.lastStatusMessage = [NSString stringWithFormat:kStatusMessage04, error, JSON, nil];
@@ -259,6 +260,7 @@ static NSString *kStatusMessage15 = @"";
 
 - (void) gotFrame:(StompFrame *)f {
     __block GIClient *this = self;
+    if (self.substate < 4) self.substate = self.substate + 1;
     switch (f.command) {
         case scCONNECTED: {
             self.state = csConnected;
@@ -324,7 +326,7 @@ static NSString *kStatusMessage15 = @"";
 - (void) setState:(GIClientState)astate {
     if (state == astate) return;
     state = astate;
-    substate = 0;
+    self.substate = 0;
     //[self didChangeValueForKey:kKeyState];
 }
 

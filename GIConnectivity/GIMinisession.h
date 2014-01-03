@@ -21,6 +21,8 @@ static NSString *reuseIdWaiting = @"waiting for ms";
 static NSString *reuseIdStartingSoon = @"session starting soon";
 static NSString *reuseIdEnded = @"session is ended";
 
+static NSString *kSessionStatusKey = @"status";
+
 @interface GIMinisession : NSObject
 
 @property (nonatomic, readonly, retain) NSString *longId;

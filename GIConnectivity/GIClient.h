@@ -23,6 +23,7 @@ typedef enum GIClientStateEnum {
 @interface GIClient : NSObject <ChannelDelegate>
 
 @property (nonatomic, readonly) GIClientState state;
+@property (nonatomic, readonly) int substate;
 @property (nonatomic, readonly, retain) NSString *lastStatusMessage;
 @property (nonatomic, readonly, retain) NSDictionary *minisessions;
 

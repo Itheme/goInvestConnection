@@ -13,7 +13,6 @@
 @class GIChannel;
 
 @interface GIReader : NSObject <NSStreamDelegate, NSURLConnectionDelegate, NSURLConnectionDataDelegate> { // <NSURLConnectionDownloadDelegate, NSURLConnectionDataDelegate> {
-    
 }
 
 @property (nonatomic, retain) GIChannel *channel;

@@ -190,18 +190,24 @@ static char cspHeader[] = {'0', '0', '1', '0'};
 }
 
 - (int) bufferHasStompFrame:(const uint8_t *)buffer maxLength:(NSUInteger)len {
-    if ((len > kTOTALCSPHLEN) && (memcmp(cspHeader, buffer, 4) == 0)) {
-        int aseqnum, length;
-        char *x = (char *)(buffer + 4);
-        sscanf(x, "%8x%8x", &aseqnum, &length);
-        if ((aseqnum >= seqnum - 20) && (aseqnum < seqnum + 20)) {
-            if (length + kTOTALCSPHLEN - 1 > len)
-                return prIncompleteFrame;
-            NSLog(@"seqnum = %d", aseqnum);
-            seqnum = aseqnum;
-            return length;
-        } else
-            return prBadSeqNum;
+    if (len > kTOTALCSPHLEN) {
+        if (memcmp(cspHeader, buffer, 4) == 0) {
+            int aseqnum, length;
+            char *x = (char *)(buffer + 4);
+            sscanf(x, "%8x%8x", &aseqnum, &length);
+            if ((aseqnum >= seqnum - 20) && (aseqnum < seqnum + 20)) {
+                if (length + kTOTALCSPHLEN - 1 > len)
+                    return prIncompleteFrame;
+                NSLog(@"seqnum = %d", aseqnum);
+                seqnum = aseqnum;
+                return length;
+            } else
+                return prBadSeqNum;
+        }
+    } else {
+        NSLog(@"ding!");
+        return prIncompleteFrame;
+    }
 
 
 /*        NSString *s = [[NSString alloc] initWithBytes:buffer length:20 encoding:NSUTF8StringEncoding];
@@ -222,7 +228,6 @@ static char cspHeader[] = {'0', '0', '1', '0'};
                 } else
                     return prBadSeqNum;
             }*/
-    }
     return prNotAFrame;
 }
 
@@ -292,30 +297,6 @@ static char cspHeader[] = {'0', '0', '1', '0'};
 
 - (NSStreamStatus)streamStatus {
     return NSStreamStatusOpen;
-}
-
-- (id) propertyForKey:(NSString *)key {
-//    NSLog(@"P 4 K %@", key);
- //   if (key isEqual NSStreamDataWrittenToMemoryStreamKey)
-    return nil;
-}
-// delegate methods
-
-- (void)connection:(NSURLConnection *)connection didWriteData:(long long)bytesWritten totalBytesWritten:(long long)totalBytesWritten expectedTotalBytes:(long long) expectedTotalBytes {
-    NSLog(@"dddddd");
-}
-
-- (void)connectionDidResumeDownloading:(NSURLConnection *)connection totalBytesWritten:(long long)totalBytesWritten expectedTotalBytes:(long long) expectedTotalBytes {
-    NSLog(@"Wut?");
-    
-}
-
-- (void)connectionDidFinishDownloading:(NSURLConnection *)connection destinationURL:(NSURL *) destinationURL {
-    NSLog(@"Boom!");
-}
-
-- (void)connection:(NSURLConnection *)connection didReceiveResponse:(NSURLResponse *)response {
-    NSLog(@"ae");
 }
 
 @end
