@@ -23,9 +23,9 @@
         if (self) {
             NSNumber *ping = [d valueForKey:@"X-CspHub-Ping"];
             if (ping) {
-                delay = ping.intValue * 1000;
+                delay = ping.intValue;
             } else {
-                delay = 1000;
+                delay = 1;
             }
             timeStamp = CFAbsoluteTimeGetCurrent();
             self.session = hSession;

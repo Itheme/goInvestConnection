@@ -23,7 +23,7 @@
 - (void) sendConnect:(NSString *)login Password:(NSString *)pwd;
 - (void) sendDisconnect;
 - (void) sendGetTickers:(NSString *) selector;
-- (void) sendSubscribe:(NSString *) table Param:(NSString *)param Receipt:(NSString *)receipt;
-- (void) sendUnsubscribe:(NSString *) table Param:(NSString *) param Receipt:(NSString *)receipt;
+- (void) sendSubscribe:(NSString *) table Param:(NSString *)param Receipt:(NSString *)receipt SubscriptionId:(NSString *)subscription;
+- (void) sendUnsubscribe:(NSString *) table Param:(NSString *) param Receipt:(NSString *)receipt SubscriptionId:(NSString *)subscription;
 
 @end

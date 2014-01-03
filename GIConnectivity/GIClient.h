@@ -16,7 +16,8 @@ typedef enum GIClientStateEnum {
     csDisconnectedWithProblem = 1,
     csConnecting = 2,
     csConnected = 3,
-    csDisconnecting = 4
+    csDisconnecting = 4,
+    csPseudoConnect = 5 // connection emulation using cache
 } GIClientState;
 
 @interface GIClient : NSObject <ChannelDelegate>
@@ -28,6 +29,7 @@ typedef enum GIClientStateEnum {
 - (id) initWithUser:(NSString *)alogin Pwd:(NSString *)apwd;
 - (void) connect;
 - (void) disconnect;
+- (void) pseudoConnect;
 
 
 @end

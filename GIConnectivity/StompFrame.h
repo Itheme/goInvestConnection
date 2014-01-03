@@ -23,7 +23,8 @@ typedef enum StompCommandsEnum {
     scMESSAGE       = 10,
     scERROR         = 11,
     scCLOSED        = 12,
-    scInvalidSID    = 90
+    scInvalidSID    = 90,
+    scGenericError  = 91
 } StompCommand;
 
 
@@ -46,6 +47,7 @@ typedef enum StompCommandsEnum {
 @property (nonatomic, readonly, retain) NSString *requestId;
 @property (nonatomic, readonly, retain) NSString *sessionId;
 @property (nonatomic, readonly, retain) NSString *message;
+@property (nonatomic, readonly, retain) NSString *subscription;
 @property (nonatomic, readonly, retain) id jsonData;
 
 

@@ -36,6 +36,7 @@
 @property (nonatomic, retain) NSString *requestId;
 @property (nonatomic, retain) NSString *sessionId;
 @property (nonatomic, retain) NSString *message;
+@property (nonatomic, retain) NSString *subscription;
 @property (nonatomic, retain) id jsonData;
 
 @end
@@ -43,7 +44,7 @@
 @implementation StompFrame
 
 @synthesize headers;
-@synthesize seqnum, receipt, destination, requestId, sessionId, message, jsonData;
+@synthesize seqnum, receipt, destination, requestId, sessionId, message, subscription, jsonData;
 @synthesize command;
 
 - (NSString *)encodedHeaders {
@@ -120,6 +121,7 @@
         __block int collected = 0;
         __block StompFrame *this = self;
         __block NSString *isid = nil;
+        //__block NSString *alreadySubscribed = nil;
         NSString *content = [[NSString alloc] initWithBytes:rawdata length:bytesTotal - contentLength - 1 encoding:NSUTF8StringEncoding];
         [content enumerateLinesUsingBlock:^(NSString *line, BOOL *stop) {
             isid = [line headerValueForName:@"Invalid session ID:"];
@@ -150,8 +152,9 @@
             self.jsonData = [NSJSONSerialization JSONObjectWithData:[NSData dataWithBytes:rawdata + bytesTotal - contentLength - 1 length:contentLength] options:0 error:&error];
             if (error) {
                 NSLog(@"JSON parsing error: %@", error);
-                NSLog(@"JSON raw data: %@", [NSString stringWithUTF8String:rawdata + bytesTotal - contentLength - 1]);
-                return nil;
+                self.message = [NSString stringWithUTF8String:rawdata + bytesTotal - contentLength - 1];
+                NSLog(@"JSON raw data: %@", self.message);
+                self.command = scGenericError;
             }
             //NSLog(@"JSON: %@", self.jsonData);
         }
@@ -175,6 +178,11 @@
                             v = [line headerValueForName:@"message:"];
                             if (v)
                                 this.message = v;
+                            else {
+                                v = [line headerValueForName:@"subscription:"];
+                                if (v)
+                                    this.subscription = v;
+                            }
                         }
                     }
                 }

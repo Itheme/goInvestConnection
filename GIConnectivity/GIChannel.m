@@ -19,6 +19,7 @@
 @property (copy) StompSuccessBlock success;
 @property (copy) StompFailureBlock failure;
 @property (nonatomic, retain) NSString *param;
+@property (nonatomic, retain) NSString *subscriptionId;
 
 - (id) initWithParam:(NSString *) p Success:(StompSuccessBlock) successBlock Failure:(StompFailureBlock) failureBlock;
 - (void) touch;
@@ -35,6 +36,7 @@
 @property (nonatomic, retain) GIWriter *writer;
 @property (nonatomic, retain) NSString *sessionId;
 @property (nonatomic, retain) NSMutableDictionary *pendingRequests;
+@property (nonatomic, retain) NSMutableDictionary *subscriptions;
 @property (nonatomic, retain) id<ChannelDelegate> clie;
 
 @end
@@ -44,7 +46,7 @@
 }
 
 @synthesize status, targetURL, closed, reader, writer, channelId, sessionId, caption;
-@synthesize clie, pendingRequests;
+@synthesize clie, pendingRequests, subscriptions;
 
 - (id) initWithURL:(NSURL *)URL Options:(id)optionsProvider Delegate:(id<ChannelDelegate>) master {
     self = [super init];
@@ -52,6 +54,7 @@
         targetURL = URL;
         self.clie = master;
         self.pendingRequests = [[NSMutableDictionary alloc] init];
+        self.subscriptions = [[NSMutableDictionary alloc] init];
     }
     return self;
 }
@@ -77,7 +80,7 @@
         NSLog(@"Starting writer...");
         this.writer = [[GIWriter alloc] initWithChannel:this];
         [this.writer sendConnect:lgn Password:pw];
-        [self performSelector:@selector(ping) withObject:nil afterDelay:this.status.delay / 1000.0];
+        [self performSelector:@selector(ping) withObject:nil afterDelay:this.status.delay];
     } failure:^(AFHTTPRequestOperation *operation, NSError *error) {
         this.status = NULL;
         [this.clie connectionFailed:error];
@@ -87,7 +90,7 @@
 }
 
 - (void) doPing {
-    [self performSelector:@selector(ping) withObject:nil afterDelay:self.status.delay / 1000.0];
+    [self performSelector:@selector(ping) withObject:nil afterDelay:self.status.delay];
 }
 
 - (void) ping {
@@ -161,6 +164,7 @@
 - (NSString *) addPendingRequest:(FrameRequest *) frq Table:(NSString *) table { // callBackMethod:(SEL) callback {
     NSString *receipt = [NSString stringWithFormat:@"a%d", rqnum++, nil];
     NSMutableDictionary *d = [pendingRequests valueForKey:table];
+    NSLog(@"****NEW RECEIPT: %@ FOR %@ ****", receipt, table);
     if (frq) {
         if (d)
             [d setValue:frq forKey:receipt];
@@ -174,18 +178,37 @@
     return [NSString stringWithFormat:@"b%d", rqnum++, nil];
 }
 
+- (NSString *) generateSubsReceipt {
+    return [NSString stringWithFormat:@"s%d", rqnum++, nil];
+}
+
+- (NSString *) addPendingSubsRequest:(FrameRequest *) frq Table:(NSString *) table { // callBackMethod:(SEL) callback {
+    NSString *receipt = [NSString stringWithFormat:@"a%d", rqnum++, nil];
+    NSMutableDictionary *d = [self.subscriptions valueForKey:table];
+    NSLog(@"****NEW RECEIPT: %@ FOR %@ ****", receipt, table);
+    if (frq) {
+        if (d)
+            [d setValue:frq forKey:receipt];
+        else
+            [self.subscriptions setValue:[@{receipt : frq} mutableCopy] forKey:table];
+    }
+    return receipt;
+}
+
+
 - (BOOL) scheduleSubscriptionRequest:(NSString *) table Param:(NSString *) param Success:(StompSuccessBlock) successBlock Failure:(StompFailureBlock) failureBlock { // callBackMethod:(SEL) callback {
     if (self.closed) return NO;
     FrameRequest *fr = nil;
-    if (successBlock || failureBlock)
-        fr = [[FrameRequest alloc] initWithParam:param Success:successBlock Failure:failureBlock];
-    [self.writer sendSubscribe:table Param:param Receipt:[self addPendingRequest:fr Table:table]];
+    //if (successBlock || failureBlock)
+    fr = [[FrameRequest alloc] initWithParam:param Success:successBlock Failure:failureBlock];
+    fr.subscriptionId = [self addPendingSubsRequest:fr Table:table];
+    [self.writer sendSubscribe:table Param:param Receipt:[self generateSubsReceipt] SubscriptionId:fr.subscriptionId];
     return YES;
 }
 
 - (void) unsubscribe:(NSString *) table Param:(NSString *) param {
     if (self.closed) return;
-    NSMutableDictionary *d = [pendingRequests valueForKey:table];
+    /*NSMutableDictionary *d = [pendingRequests valueForKey:table];
     if (d) {
         __block id keyToKill = nil;
         [d enumerateKeysAndObjectsUsingBlock:^(id key, id obj, BOOL *stop) {
@@ -202,7 +225,27 @@
                 [pendingRequests setValue:nil forKey:table];
         }
     }
-    [self.writer sendUnsubscribe:table Param:param Receipt:[self generateReceipt]];
+    [self.writer sendUnsubscribe:table Param:param Receipt:[self generateReceipt]];*/
+    NSMutableDictionary *d = [subscriptions valueForKey:table];
+    __block FrameRequest *frqToKill = nil;
+    if (d) {
+        __block id keyToKill = nil;
+        [d enumerateKeysAndObjectsUsingBlock:^(id key, id obj, BOOL *stop) {
+            frqToKill = obj;
+            if ([frqToKill.param isEqualToString:param]) {
+                *stop = YES;
+                keyToKill = key;
+            }
+        }];
+        if (keyToKill) {
+            if ([[d allValues] count] > 1)
+                [d setValue:nil forKey:keyToKill];
+            else
+                [subscriptions setValue:nil forKey:table];
+        }
+    }
+    if (frqToKill)
+        [self.writer sendUnsubscribe:table Param:param Receipt:[self generateReceipt] SubscriptionId:frqToKill.subscriptionId];
 }
 
 - (void) gotFrame:(StompFrame *)f {
@@ -235,12 +278,25 @@
             else
                 if (c == 1) {
                     FrameRequest *frq = [[d allValues] lastObject];
+                    [frq touch];
                     if (frq.success)
                         frq.success(f);
 #warning other types too!
                 } else
                     NSLog(@"Skipping message %@ (r2)", f.receipt);
             return;
+        }
+        d = [self.subscriptions valueForKey:f.destination];
+        if (d) {
+            if (f.subscription) {
+                FrameRequest *frq = [d valueForKey:f.subscription];
+                if (f.command == scMESSAGE) {
+                    [frq touch];
+                    if (frq.success)
+                        frq.success(f);
+                    return;
+                }
+            }
         }
     }
     [self.clie gotFrame:f];
@@ -258,7 +314,7 @@
 
 @implementation FrameRequest
 
-@synthesize param, success, failure;
+@synthesize param, success, failure, subscriptionId;
 
 - (id) initWithParam:(NSString *) p Success:(StompSuccessBlock) successBlock Failure:(StompFailureBlock) failureBlock {
     self = [super init];

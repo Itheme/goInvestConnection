@@ -16,15 +16,18 @@
 
 @synthesize channel, client;
 
-- (NSMutableDictionary *)defaultHeaders:(NSString *) reciept {
-    if (self.channel.sessionId)
-        return [@{@"session" : self.channel.sessionId, @"id" : self.channel.channelId, @"receipt" : reciept} mutableCopy];
-    return [@{@"id" : self.channel.channelId, @"receipt" : reciept} mutableCopy];
+- (NSMutableDictionary *)defaultHeaders:(NSString *) reciept Subscription:(NSString *) subscriptionId {
+    if (self.channel.sessionId) {
+        if (subscriptionId)
+            return [@{@"session" : self.channel.sessionId, @"id" : subscriptionId, @"receipt" : reciept} mutableCopy];
+        return [@{@"session" : self.channel.sessionId, @"receipt" : reciept} mutableCopy];
+    }
+    return [@{@"receipt" : reciept} mutableCopy];
 #warning session here
 }
 
-- (void) genericSend:(StompCommand) sc Receipt:(NSString *) receipt Destination:(NSString *) destination Method:(NSString *) method Selector:(NSString *) selector {
-    NSMutableDictionary *headers = [self defaultHeaders:receipt];
+- (void) genericSend:(StompCommand) sc Receipt:(NSString *) receipt Destination:(NSString *) destination Method:(NSString *) method Selector:(NSString *) selector Subscription:(NSString *) subscriptionId {
+    NSMutableDictionary *headers = [self defaultHeaders:receipt Subscription:subscriptionId];
     [headers addEntriesFromDictionary: @{@"destination" : destination}];
     if (selector)
         [headers addEntriesFromDictionary: @{@"selector" : selector}];
@@ -55,20 +58,19 @@
 }
 
 - (void) sendGetTickers:(NSString *) selector {
-    [self genericSend: scREQUEST Receipt:@"tickersReceipt" Destination:@"list" Method:@"send" Selector:selector];
+    [self genericSend: scREQUEST Receipt:@"tickersReceipt" Destination:@"list" Method:@"send" Selector:selector Subscription:nil];
 }
 
-- (void) sendSubscribe:(NSString *) table Param:(NSString *)param Receipt:(NSString *)receipt {
-    [self genericSend: scSUBSCRIBE Receipt:receipt Destination:table Method:@"send" Selector:param];
+- (void) sendSubscribe:(NSString *) table Param:(NSString *)param Receipt:(NSString *)receipt SubscriptionId:(NSString *)subscription {
+    [self genericSend: scSUBSCRIBE Receipt:receipt Destination:table Method:@"send" Selector:param Subscription:subscription];
 }
 
-- (void) sendUnsubscribe:(NSString *) table Param:(NSString *) param Receipt:(NSString *)receipt {
-    [self genericSend: scUNSUBSCRIBE Receipt:receipt Destination:table Method:@"send" Selector:param];
+- (void) sendUnsubscribe:(NSString *) table Param:(NSString *) param Receipt:(NSString *)receipt SubscriptionId:(NSString *)subscription {
+    [self genericSend: scUNSUBSCRIBE Receipt:receipt Destination:table Method:@"send" Selector:param Subscription:subscription];
 }
-
 
 - (void) sendConnect:(NSString *)login Password:(NSString *)pwd {
-    NSMutableDictionary *headers = [self defaultHeaders:@"connectRec"];
+    NSMutableDictionary *headers = [self defaultHeaders:@"connectRec" Subscription:nil];
     [headers addEntriesFromDictionary:@{@"login" : login, @"channel" : self.channel.channelId, @"passcode" : pwd}];//, @"destination" : @"connect"}];
     StompFrame *f = [[StompFrame alloc] initWithCommand:scCONNECT Headers:headers];
     
@@ -98,7 +100,7 @@
 }
 
 - (void) sendDisconnect {
-    NSMutableDictionary *headers = [self defaultHeaders:@"discRec"];
+    NSMutableDictionary *headers = [self defaultHeaders:@"discRec" Subscription:nil];
     StompFrame *f = [[StompFrame alloc] initWithCommand:scDISCONNECT Headers:headers];
     
     NSURL *url = [NSURL URLWithString:[self.channel.status sessioned:@"send"] relativeToURL:self.channel.targetURL];
