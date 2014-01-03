@@ -45,9 +45,9 @@
         self.xorders = [t setupOrderQueueKeeper:YES Table:self.currentTable];
         #warning AUCTION TYPE HERE!
         [self.channel scheduleSubscriptionRequest:@"orderqueue" Param:[t subscriptionParams] Success:^(StompFrame *f) {
-            GIRowParser *oqParser = [[GIRowParser alloc] initWithDictionary:f.jsonData ColumnNames:@[@"ORDERNO", @"ORDERSTATUS", @"PRICE", @"QUANTITY", @"MATCHINGQTY"]];
+            GIRowParser *oqParser = [[GIRowParser alloc] initWithDictionary:f.jsonData ColumnNames:@[@"ORDERNO", @"ORDERSTATUS", @"PRICE", @"QUANTITY", @"MATCHINGQTY", @"FIRMALIAS"]];
             [this.xorders beginUpdate];
-            [oqParser enumRowsUsingBlock5:^(id orderNo, id orderStatus, id price, id qtyV, id mqtyV) {
+            [oqParser enumRowsUsingBlock6:^(id orderNo, id orderStatus, id price, id qtyV, id mqtyV, id firmAlias) {
                 NSString *v = orderStatus;
                 unichar c = [v characterAtIndex:0];
                 QOrderStatus stat;
@@ -73,6 +73,7 @@
                 }
                 int qty = [qtyV intValue];
                 int mqty = [mqtyV intValue];
+                NSLog(@"FIRMALIAS: %@", firmAlias);
                 [this.xorders gotDataForOrderNo:[orderNo intValue] Status:stat Price:price Qty:qty MatchingQty:mqty];
             }];
             [this.xorders endUpdate];
@@ -116,7 +117,7 @@
 + (GIEngineClient *) setupSharedClient {
     GIAppDelegate *d = [UIApplication sharedApplication].delegate;
    //d.client = [[GIEngineClient alloc] initWithUser:@"MXZERNO.D001701B" Pwd:@""];
-    d.client = [[GIEngineClient alloc] initWithUser:/**@"MXZERNO.D0006013"/**/@"MXZERNO.D0002016"/**/ Pwd:@""];
+    d.client = [[GIEngineClient alloc] initWithUser:/**@"MXZERNO.D0006013"/**/@"MXZERNO.D0025"/*@"MXZERNO.D0002016"/**/ Pwd:@""];
     return d.client;
 }
 

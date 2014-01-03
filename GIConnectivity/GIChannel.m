@@ -7,6 +7,7 @@
 //
 
 #import "GIChannel.h"
+#import "GIConsts.h"
 
 #import "AFURLConnectionOperation.h"
 #import "AFJSONRequestOperation.h"
@@ -135,6 +136,7 @@
 }*/
 
 - (void) disconnectCSP {
+    [self.clie disconnected];
     [self stopPingThread];
     NSURL *url = [NSURL URLWithString:[status sessioned:@"disconnect"] relativeToURL:targetURL];
     NSURLRequest *request = [NSURLRequest requestWithURL:url];
@@ -172,7 +174,7 @@
 }
 
 - (NSString *) addPendingRequest:(FrameRequest *) frq Table:(NSString *) table { // callBackMethod:(SEL) callback {
-    NSString *receipt = [NSString stringWithFormat:@"a%d", rqnum++, nil];
+    NSString *receipt = [NSString stringWithFormat:@"t%d", rqnum++, nil];
     NSMutableDictionary *d = [pendingRequests valueForKey:table];
     NSLog(@"****NEW RECEIPT: %@ FOR %@ ****", receipt, table);
     if (frq) {
@@ -280,7 +282,7 @@
     }
     if ((f.command == scERROR) || (f.command == scGenericError)) {
         //__block NSString *rec = f.receipt;
-        __block GIChannel *this = self;
+        //__block GIChannel *this = self;
         __block NSString *subsId = nil;
         [self.subscriptions enumerateKeysAndObjectsUsingBlock:^(id key, id obj, BOOL *stop) {
             NSMutableDictionary *d = obj;
@@ -302,7 +304,7 @@
             return;
     }
     BOOL rc = NO;
-    NSMutableDictionary *d = [self.pendingRequests valueForKey:f.destination];
+    NSMutableDictionary *d = [self.pendingRequests valueForKey:f.destination?f.destination:kOrderTransName];
     if (d) {
         if (f.receipt) {
             FrameRequest *frq = [d valueForKey:f.receipt];
@@ -331,7 +333,7 @@
         rc = YES;
     } else
         if ((f.receipt) && (f.destination == nil))
-            if ((![f.receipt isEqualToString:@"connectRec"]) && (![f.receipt isEqualToString:@"tickersReceipt"])) {
+            if ((![f.receipt isEqualToString:kReceiptConnection]) && (![f.receipt isEqualToString:@"tickersReceipt"])) {
                 __block FrameRequest *frq = nil;
                 __block NSString *dest = nil;
                 [self.subscriptions enumerateKeysAndObjectsUsingBlock:^(id key, id obj, BOOL *stop) {
@@ -375,13 +377,13 @@
     [self.clie gotFrame:f];
 }
 
-- (BOOL) performTransaction:(NSString *) trans Param:(NSString *) param Success:(StompSuccessBlock) successBlock Failure:(StompFailureBlock) failureBlock {
+- (BOOL) performTransaction:(NSString *) trans Ticker:(NSString *) ticker Body:(NSDictionary *)body Success:(StompSuccessBlock) successBlock Failure:(StompFailureBlock) failureBlock {
     if (self.closed) return NO;
-    FrameRequest *fr = nil;
-    NSString *rec = [self generateReceipt];
-    fr = [[FrameRequest alloc] initWithParam:param Success:successBlock Failure:failureBlock receipt:rec];
-    fr.subscriptionId = [self addPendingRequest:fr Table:trans];
-    [self.writer sendTransaction:trans Ticker:param Param:param Receipt:rec];
+    //transactionPending = YES;
+    FrameRequest *fr = [[FrameRequest alloc] initWithParam:ticker Success:successBlock Failure:failureBlock receipt:@""];
+    NSString *rec = [self addPendingRequest:fr Table:trans];
+    fr.receipt = rec;
+    [self.writer sendTransaction:trans Body:body Receipt:rec];
     return YES;
 
 }
@@ -391,6 +393,7 @@
     if (!astatus) {
         self.sessionId = nil;
         [self.pendingRequests removeAllObjects];
+        [self.subscriptions removeAllObjects];
     }
 }
 @end

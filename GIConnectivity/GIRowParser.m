@@ -47,4 +47,9 @@
         block([row objectAtIndex:colIndexes[0]], [row objectAtIndex:colIndexes[1]], [row objectAtIndex:colIndexes[2]], [row objectAtIndex:colIndexes[3]], [row objectAtIndex:colIndexes[4]]);
 }
 
+- (void) enumRowsUsingBlock6:(RowEnum6) block {
+    for (NSArray *row in self.rows)
+        block([row objectAtIndex:colIndexes[0]], [row objectAtIndex:colIndexes[1]], [row objectAtIndex:colIndexes[2]], [row objectAtIndex:colIndexes[3]], [row objectAtIndex:colIndexes[4]], [row objectAtIndex:colIndexes[5]]);
+}
+
 @end

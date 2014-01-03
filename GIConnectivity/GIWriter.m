@@ -7,6 +7,7 @@
 //
 
 #import "GIWriter.h"
+#import "GIConsts.h"
 #import "GIChannel.h"
 #import "StompFrame.h"
 #import "AFHTTPRequestOperation.h"
@@ -26,6 +27,18 @@
 #warning session here
 }
 
+- (NSMutableURLRequest *) makeARequestFor:(NSURL *)url Frame:(StompFrame *)f Addendum:(NSData *)data{
+	NSMutableURLRequest *request = [[NSMutableURLRequest alloc] initWithURL:url];
+    [request setHTTPMethod:@"POST"];
+    //[request setAllHTTPHeaderFields:headers];
+    
+    [request setValue:@"text/plain" forHTTPHeaderField:@"Content-Type"];
+    [request setValue:@"" forHTTPHeaderField:@"Accept-Encoding"];
+    
+    [request setHTTPBody: [f makeBufferWith:data]];
+    return request;
+}
+
 - (void) genericSend:(StompCommand) sc Receipt:(NSString *) receipt Destination:(NSString *) destination Method:(NSString *) method Selector:(NSString *) selector Subscription:(NSString *) subscriptionId {
     NSMutableDictionary *headers = [self defaultHeaders:receipt Subscription:subscriptionId];
     [headers addEntriesFromDictionary: @{@"destination" : destination}];
@@ -36,14 +49,7 @@
     StompFrame *f = [[StompFrame alloc] initWithCommand:sc Headers:headers];
     
     NSURL *url = [NSURL URLWithString:[self.channel.status sessioned:method] relativeToURL:self.channel.targetURL];
-	NSMutableURLRequest *request = [[NSMutableURLRequest alloc] initWithURL:url];
-    [request setHTTPMethod:@"POST"];
-    //[request setAllHTTPHeaderFields:headers];
-    
-    [request setValue:@"text/plain" forHTTPHeaderField:@"Content-Type"];
-    [request setValue:@"" forHTTPHeaderField:@"Accept-Encoding"];
-    
-    [request setHTTPBody: [f makeBufferWith:nil]];
+	NSMutableURLRequest *request = [self makeARequestFor:url Frame:f Addendum:nil];
     
     __block GIChannel *ch = self.channel;
     __block NSString *rec = receipt;
@@ -72,19 +78,12 @@
 }
 
 - (void) sendConnect:(NSString *)login Password:(NSString *)pwd {
-    NSMutableDictionary *headers = [self defaultHeaders:@"connectRec" Subscription:nil];
+    NSMutableDictionary *headers = [self defaultHeaders:kReceiptConnection Subscription:nil];
     [headers addEntriesFromDictionary:@{@"login" : login, @"channel" : self.channel.channelId, @"passcode" : pwd}];//, @"destination" : @"connect"}];
     StompFrame *f = [[StompFrame alloc] initWithCommand:scCONNECT Headers:headers];
     
     NSURL *url = [NSURL URLWithString:[self.channel.status sessioned:@"send"] relativeToURL:self.channel.targetURL];
-	NSMutableURLRequest *request = [[NSMutableURLRequest alloc] initWithURL:url];
-    [request setHTTPMethod:@"POST"];
-    [request setValue:@"" forHTTPHeaderField:@"Accept-Encoding"];
-            
-    [request setValue:@"text/plain" forHTTPHeaderField:@"Content-Type"];
-    
-    [request setHTTPBody: [f makeBufferWith:nil]];
-    
+	NSMutableURLRequest *request = [self makeARequestFor:url Frame:f Addendum:nil];
     //__block GIWriter *this = self;
     AFHTTPRequestOperation *ro = [[AFHTTPRequestOperation alloc] initWithRequest:request];
     [ro setCompletionBlockWithSuccess:^(AFHTTPRequestOperation *operation, id responseObject) {
@@ -106,13 +105,7 @@
     StompFrame *f = [[StompFrame alloc] initWithCommand:scDISCONNECT Headers:headers];
     
     NSURL *url = [NSURL URLWithString:[self.channel.status sessioned:@"send"] relativeToURL:self.channel.targetURL];
-	NSMutableURLRequest *request = [[NSMutableURLRequest alloc] initWithURL:url];
-    [request setHTTPMethod:@"POST"];
-    [request setValue:@"" forHTTPHeaderField:@"Accept-Encoding"];
-    
-    [request setValue:@"text/plain" forHTTPHeaderField:@"Content-Type"];
-    
-    [request setHTTPBody: [f makeBufferWith:nil]];
+	NSMutableURLRequest *request = [self makeARequestFor:url Frame:f Addendum:nil];
     
     //__block GIWriter *this = self;
     AFHTTPRequestOperation *ro = [[AFHTTPRequestOperation alloc] initWithRequest:request];
@@ -126,22 +119,14 @@
 
 }
 
-- (void) sendTransaction:(NSString *) name Ticker:(NSString *) ticker Param:(NSString *) param Receipt:(NSString *)receipt {
+- (void) sendTransaction:(NSString *) name Body:(NSDictionary *)body Receipt:(NSString *)receipt {
     NSMutableDictionary *headers = [self defaultHeaders:receipt Subscription:nil];
-    [headers addEntriesFromDictionary: @{@"destination" : @"orders.add"/*destination*/}];
-    //NSMutableDictionary *body = [@{@"TICKER": ticker, @"BUYSELL": @"B", @"PRICE": @[@6000, @0], @"QUANTITY": @2} mutableCopy];
-    NSMutableDictionary *body = [@{@"columns": @[@"ACCOUNT", @"TICKER", @"BUYSELL", @"PRICE", @"QUANTITY"], @"data": @[@[@"D000200ZERNB", ticker,  @"B", /*@[@6000, @0]*/ @6000.0, @2]]} mutableCopy];
+    [headers addEntriesFromDictionary: @{@"destination" : name/*destination*/}];
     StompFrame *f = [[StompFrame alloc] initWithCommand:scSEND Headers:headers];
     
     NSURL *url = [NSURL URLWithString:[self.channel.status sessioned:@"send"] relativeToURL:self.channel.targetURL];
-	NSMutableURLRequest *request = [[NSMutableURLRequest alloc] initWithURL:url];
-    [request setHTTPMethod:@"POST"];
-    //[request setAllHTTPHeaderFields:headers];
-    
-    [request setValue:@"text/plain" forHTTPHeaderField:@"Content-Type"];
-    [request setValue:@"" forHTTPHeaderField:@"Accept-Encoding"];
     NSError *error = nil;
-    [request setHTTPBody: [f makeBufferWith:[NSJSONSerialization dataWithJSONObject:body options:0 error:&error]]];
+	NSMutableURLRequest *request = [self makeARequestFor:url Frame:f Addendum:[NSJSONSerialization dataWithJSONObject:body options:0 error:&error]];
     
     __block GIChannel *ch = self.channel;
     __block NSString *rec = receipt;

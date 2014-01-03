@@ -10,6 +10,7 @@
 
 typedef void(^RowEnum2)(id v0, id v1);
 typedef void(^RowEnum5)(id v0, id v1, id v2, id v3, id v4);
+typedef void(^RowEnum6)(id v0, id v1, id v2, id v3, id v4, id v5);
 
 @interface GIRowParser : NSObject // NSEnumerator
 
@@ -18,6 +19,7 @@ typedef void(^RowEnum5)(id v0, id v1, id v2, id v3, id v4);
 - (id) initWithDictionary:(NSDictionary *)d ColumnNames:(NSArray *) cols;
 - (void) enumRowsUsingBlock2:(RowEnum2) block;
 - (void) enumRowsUsingBlock5:(RowEnum5) block;
+- (void) enumRowsUsingBlock6:(RowEnum6) block;
 
 
 @end

@@ -9,6 +9,7 @@
 #import "GIClient.h"
 #import "GIClientStates.h"
 #import "GIRowParser.h"
+#import "GIConsts.h"
 
 #import "AFJSONRequestOperation.h"
 
@@ -18,12 +19,13 @@
 }
 
 @property (nonatomic, setter = setState:) GIClientState state;
-@property (nonatomic, retain) NSString *login;
-@property (nonatomic, retain) NSString *pwd;
+//@property (nonatomic, retain) NSString *login;
+//@property (nonatomic, retain) NSString *pwd;
 @property (nonatomic, retain) NSString *lastStatusMessage;
 @property (nonatomic, retain) NSString *disconnectionReason;
 @property (nonatomic) int substate;
 @property (nonatomic, retain) GIChannel *channel;
+@property (nonatomic, retain) NSArray *accounts;
 
 // parsing stuff
 @property (nonatomic, retain) id tickerList;
@@ -38,10 +40,11 @@
 
 @implementation GIClient
 
-@synthesize state, login, pwd;
+@synthesize state, login, pwd, account;
 @synthesize channel;
 @synthesize lastStatusMessage, disconnectionReason;
 @synthesize substate;
+@synthesize accounts;
 
 @synthesize tickerList, tradeTimeLists, secInfoLists, minisessions;
 
@@ -56,7 +59,7 @@ static NSString *kStatusMessage06 = @"Could not get minisessions' info (%@)";
 static NSString *kStatusMessage07 = @"Could not get systime (%@)";
 static NSString *kStatusMessage08 = @"Could not get tradetimes (%@)";
 static NSString *kStatusMessage09 = @"Could not acquire system log (%@)";
-static NSString *kStatusMessage10 = @"";
+static NSString *kStatusMessage10 = @"Connection refused: %@";
 static NSString *kStatusMessage11 = @"";
 static NSString *kStatusMessage12 = @"";
 static NSString *kStatusMessage13 = @"";
@@ -125,11 +128,17 @@ static NSString *kStatusMessage15 = @"";
         self.state = csDisconnecting;
         [self.channel disconnect];
         [self.channel disconnectCSP];
-    }
+    } else
+        if (self.state == csConnecting) {
+            self.state = csDisconnectedWithProblem;
+            [self.channel disconnect];
+            [self.channel disconnectCSP];
+        }
 }
 
 - (void) disconnectWithMessage:(NSString *)message {
     self.disconnectionReason = message;
+    NSLog(@"logoff: %@", message);
     [self disconnect];
 }
 
@@ -404,8 +413,25 @@ static NSString *kStatusMessage15 = @"";
     if (self.substate < 4) self.substate = self.substate + 1;
     switch (f.command) {
         case scCONNECTED: {
+            NSLog(@"Connection data: %@", f.jsonData);
+            NSDictionary *d = f.jsonData;
+            if (d) {
+                NSString *v = [d valueForKey:@"status"];
+                if ([v isEqualToString:@"OK"]) {
+                    self.accounts = [d valueForKey:@"account"];
+                    d = [self.accounts lastObject];
+                    self.account = [d valueForKey:@"code"];
+                } else {
+                    [self disconnectWithMessage:[NSString stringWithFormat:kStatusMessage10, v]];
+                    return;
+                }
+            } else {
+                [self disconnectWithMessage:[NSString stringWithFormat:kStatusMessage10, @"No data"]];
+                return;
+            }
             self.state = csConnected;
 #warning parse out account data in f.jsonString
+            
             [self performSelectorOnMainThread:@selector(makeupMainSuscriptions) withObject:nil waitUntilDone:YES];
             break;
         }
@@ -422,6 +448,13 @@ static NSString *kStatusMessage15 = @"";
             self.state = csDisconnected;
             NSLog(@"BANG!");
             break;
+        case scGenericError:
+        case scERROR:
+            if (f.receipt)
+                if ([f.receipt isEqualToString:kReceiptConnection]) {
+                    [self disconnectWithMessage:[NSString stringWithFormat:kStatusMessage10, f.message]];
+                    return;
+                }
         default:
             break;
     }
@@ -434,6 +467,9 @@ static NSString *kStatusMessage15 = @"";
 - (void) connectionLost {
     self.lastStatusMessage = kStatusMessage05;
     self.state = csDisconnectedWithProblem;
+}
+
+- (void) disconnected {
 }
 
 - (void) setState:(GIClientState)astate {

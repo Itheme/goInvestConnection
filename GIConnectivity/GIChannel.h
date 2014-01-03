@@ -18,6 +18,7 @@
 
 - (void) connectionFailed:(NSError *)error;
 - (void) connectionLost;
+- (void) disconnected; // called in every disconnection case
 - (void) gotFrame:(StompFrame *)f;
 //- (void) requestCompleted:(NSString *)table Data:(NSString *) data;
 
@@ -48,6 +49,6 @@
 - (void) unsubscribe:(NSString *) table Param:(NSString *) param;
 - (void) writerSuccededForReceipt:(NSString *)receipt;
 - (void) writerFailedForReceipt:(NSString *)receipt WithError:(NSError *)error;
-- (BOOL) performTransaction:(NSString *) trans Param:(NSString *) param Success:(StompSuccessBlock) successBlock Failure:(StompFailureBlock) failureBlock;
+- (BOOL) performTransaction:(NSString *) trans Ticker:(NSString *) ticker Body:(NSDictionary *) body Success:(StompSuccessBlock) successBlock Failure:(StompFailureBlock) failureBlock;
 
 @end
