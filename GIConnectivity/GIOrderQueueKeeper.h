@@ -7,6 +7,7 @@
 //
 
 #import <Foundation/Foundation.h>
+#import "GIBaseKeeper.h"
 
 typedef enum QOrderStatusEnum {
     qoActive = 0,
@@ -17,14 +18,19 @@ typedef enum QOrderStatusEnum {
     qoTECancel = 5
 } QOrderStatus;
 
-@interface GIOrderQueueKeeper : NSObject <UITableViewDataSource, UITableViewDelegate>
+typedef struct OQRecordStruct {
+    int orderNo;
+    double price;
+    int decimals;
+    int qty;
+    int mqty;
+} OQRecord, *OQRecordPtr;
 
-@property (nonatomic, retain) UITableView *tableToUse;
+@interface GIOrderQueueKeeper : GIBaseKeeper <UITableViewDataSource, UITableViewDelegate>
 
 - (void) gotDataForOrderNo:(int) orderNo Status:(QOrderStatus) status Price:(id)price Qty:(int)qty MatchingQty:(int)matchingQty;
-- (void) beginUpdate;
-- (void) endUpdate;
 
 - (id) initForBuy:(BOOL) buying;
+
 
 @end

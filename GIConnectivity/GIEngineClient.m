@@ -9,16 +9,22 @@
 #import "GIEngineClient.h"
 #import "GIAppDelegate.h"
 #import "GIOrderQueueKeeper.h"
+#import "GIOrderQueueCell.h"
+#import "GIWonOrdersKeeper.h"
 
 @interface GIEngineClient ()
 
-@property (nonatomic, retain) GIOrderQueueKeeper *orders;
+@property (nonatomic, retain) GIOrderQueueKeeper *xorders;
+@property (nonatomic, retain) GIWonOrdersKeeper *xwonOrders;
+@property (nonatomic, retain, setter = setTarget:) GIMinisession *target;
+@property (nonatomic, retain) UITableView *currentTable;
 
 @end
 
 @implementation GIEngineClient
 
-@synthesize target, targetSubscriber, orders;
+@synthesize target, targetSubscriber, xorders, xwonOrders;
+@synthesize currentTable;
 
 - (void) gotProblemsWithOQ:(NSString *)errorMessage {
 #warning undone
@@ -28,11 +34,15 @@
     if (target) {
         if ([target isEqual:t]) return;
         [self.channel unsubscribe:@"orderqueue" Param:[target subscriptionParams]];
+        [self.channel unsubscribe:@"lasttrades" Param:[target subscriptionParams]];
+        [target dropTableConnection];
     }
     target = t;
-    if (t) {
-        self.orders = [[GIOrderQueueKeeper alloc] init];
-        __block GIEngineClient *this = self;
+    if (t == nil) return;
+    __block GIEngineClient *this = self;
+    if (t.status == msRunning) {
+        self.xorders = [t setupOrderQueueKeeper:YES Table:self.currentTable];
+        #warning AUCTION TYPE HERE!
         [self.channel scheduleSubscriptionRequest:@"orderqueue" Param:[t subscriptionParams] Success:^(StompFrame *f) {
             NSArray *columns = [f.jsonData valueForKey:@"columns"];
             NSUInteger orderNoIndex = [columns indexOfObject:@"ORDERNO"];
@@ -41,7 +51,7 @@
             NSUInteger qtyIndex = [columns indexOfObject:@"QUANTITY"];
             NSUInteger matchingQtyIndex = [columns indexOfObject:@"MATCHINGQTY"];
             NSArray *data = [f.jsonData valueForKey:@"data"];
-            [this.orders beginUpdate];
+            [this.xorders beginUpdate];
             for (NSArray *row in data) {
                 NSString *v = [row objectAtIndex:orderStatusIndex];
                 unichar c = [v characterAtIndex:0];
@@ -68,13 +78,47 @@
                 }
                 int qty = [[row objectAtIndex:qtyIndex] intValue];
                 int mqty = [[row objectAtIndex:matchingQtyIndex] intValue];
-                [this.orders gotDataForOrderNo:[[row objectAtIndex:orderNoIndex] intValue] Status:stat Price:[row objectAtIndex:priceIndex] Qty:qty MatchingQty:mqty];
+                [this.xorders gotDataForOrderNo:[[row objectAtIndex:orderNoIndex] intValue] Status:stat Price:[row objectAtIndex:priceIndex] Qty:qty MatchingQty:mqty];
             }
-            [this.orders endUpdate];
+            [this.xorders endUpdate];
             //NSLog(@"OQOQOQOQOQOQOQOQOQOQOQOQ %@", f.jsonData);
         } Failure:^(NSString *errorMessage) {
             [this gotProblemsWithOQ:errorMessage];
         }];
+        self.xwonOrders = nil;
+    } else {
+        if ((t.status == msEnded) || (t.status == msUnknown)) {
+            self.xwonOrders = [t setupWonOrdersKeeperFor:self.currentTable];
+            if (!self.xwonOrders.loaded)
+                [self.channel scheduleSubscriptionRequest:@"lasttrades" Param:[t subscriptionParams] Success:^(StompFrame *f) {
+                    NSArray *columns = [f.jsonData valueForKey:@"columns"];
+                    NSUInteger tradeNoIndex = [columns indexOfObject:@"TRADENO"];
+                    NSUInteger tradeTimeIndex = [columns indexOfObject:@"TRADETIME"];
+                    NSUInteger priceIndex = [columns indexOfObject:@"PRICE"];
+                    NSUInteger qtyIndex = [columns indexOfObject:@"QUANTITY"];
+                    NSUInteger valueIndex = [columns indexOfObject:@"VALUE"];
+
+                    NSArray *data = [f.jsonData valueForKey:@"data"];
+                    [this.xwonOrders beginUpdate];
+                    for (NSArray *row in data) {
+                        id tradeNo = [row objectAtIndex:tradeNoIndex];
+                        if ([this.xwonOrders needsDataForTradeNo:[NSString stringWithFormat:@"%@", tradeNo, nil]]) {
+                            [this.xwonOrders gotDataForTradeNo:tradeNo At:[row objectAtIndex:tradeTimeIndex] Price:[row objectAtIndex:priceIndex] Qty:[row objectAtIndex:qtyIndex] Value:[row objectAtIndex:valueIndex]];
+                        }
+                    }
+                    [this.xwonOrders endUpdate];
+
+                } Failure:^(NSString *errorMessage) {
+                    
+                    [this gotProblemsWithOQ:errorMessage];
+                }];
+            else
+                [this.xwonOrders endUpdate];
+            self.xorders = nil;
+        } else {
+            self.xorders = nil;
+            self.xwonOrders = nil;
+        }
     }
 }
 
@@ -86,21 +130,19 @@
 + (GIEngineClient *) setupSharedClient {
     GIAppDelegate *d = [UIApplication sharedApplication].delegate;
    //d.client = [[GIEngineClient alloc] initWithUser:@"MXZERNO.D001701B" Pwd:@""];
-    d.client = [[GIEngineClient alloc] initWithUser:@"MXZERNO.D0006013" Pwd:@""];
+    d.client = [[GIEngineClient alloc] initWithUser:/**@"MXZERNO.D0006013"/**/@"MXZERNO.D0002016"/**/ Pwd:@""];
     return d.client;
 }
 
-- (void) setupOQDelegatesFor:(UITableView *)table {
+- (void) setupOQDelegatesFor:(UITableView *)table session:(GIMinisession *)s {
     if (table) {
-        table.dataSource = self.orders;
-        table.delegate = self.orders;
-    } else {
-        if (self.orders.tableToUse) {
-            self.orders.tableToUse.delegate = nil;
-            self.orders.tableToUse.dataSource = nil;
-        }
+        [table registerClass:[GIOrderQueueCell class] forCellReuseIdentifier:@"order"];
+        [table registerNib:[UINib nibWithNibName:@"GIOrderQueueCelliPad" bundle:[NSBundle mainBundle]] forCellReuseIdentifier:@"order"];
+        [table registerClass:[GIOrderQueueCell class] forCellReuseIdentifier:@"wonorder"];
+        [table registerNib:[UINib nibWithNibName:@"GIOrderQueueCelliPad" bundle:[NSBundle mainBundle]] forCellReuseIdentifier:@"wonorder"];
     }
-    self.orders.tableToUse = table;
+    self.currentTable = table;
+    self.target = s;
 }
 
 @end

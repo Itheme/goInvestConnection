@@ -7,14 +7,7 @@
 //
 
 #import "GIOrderQueueKeeper.h"
-
-typedef struct OQRecordStruct {
-    int orderNo;
-    double price;
-    int decimals;
-    int qty;
-    int mqty;
-} OQRecord, *OQRecordPtr;
+#import "GIOrderQueueCell.h"
 
 @interface GIOrderQueueKeeper () {
     BOOL buy;
@@ -30,7 +23,6 @@ typedef struct OQRecordStruct {
 
 @implementation GIOrderQueueKeeper
 
-@synthesize tableToUse;
 //@synthesize targetOrders, sortedOrderNos;
 
 - (id) initForBuy:(BOOL) buying {
@@ -39,7 +31,8 @@ typedef struct OQRecordStruct {
         buy = buying;
         ocapacity = 10;
         ocount = 0;
-        order = malloc(ocapacity*sizeof(OQRecord));
+        int bytes = ocapacity*sizeof(OQRecord);
+        order = malloc(bytes);
         
         //self.targetOrders = [[NSMutableDictionary alloc] init];
         //self.sortedOrderNos = [[NSMutableArray alloc] init];
@@ -94,33 +87,22 @@ typedef struct OQRecordStruct {
             }
 }
 
-- (void) beginUpdate {
-}
-
-- (void) doReloadTable {
-    [self.tableToUse reloadData];
-    tableReloadingIsScheduled = false;
-}
-
-- (void) tableNeedsReloading {
-    if (tableReloadingIsScheduled) return;
-    tableReloadingIsScheduled = true;
-    [self performSelector:@selector(doReloadTable) withObject:nil afterDelay:0.2];
-}
-
 - (void) endUpdate {
     for (int i = ocount; i--; ) {
         int maxj = i;
-        for (int j = i; j-- > 0; )
-            if (order[j].price > order[maxj].price)
+        for (int j = i; j-- > 0; ) {
+            float delta = order[maxj].price - order[j].price;
+            if ((delta > 0.00001) || ((delta > -0.00001) && (order[maxj].mqty < order[j].decimals)))
+            //if (order[j].price < order[maxj].price)
                 maxj = j;
+        }
         if (maxj != i) {
             OQRecord r = order[i];
             order[i] = order[maxj];
             order[maxj] = r;
         }
     }
-    [self tableNeedsReloading];
+    [super endUpdate];
     /*NSMutableArray *a = [[self.targetOrders allKeys] mutableCopy];
     if (buy)
     [a sortUsingComparator:^NSComparisonResult(id obj1, id obj2) {
@@ -139,15 +121,26 @@ typedef struct OQRecordStruct {
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    UITableViewCell *res = [tableView dequeueReusableCellWithIdentifier:@"order"];
-    if (res == nil) {
-        res = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"order"];
-    }
+    GIOrderQueueCell *res = [tableView dequeueReusableCellWithIdentifier:@"order"];//[NSString stringWithFormat:@"order%d", indexPath.row, nil]];
+    /*if (res == nil) {
+        res = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:[NSString stringWithFormat:@"order%d", indexPath.row, nil]];
+    }*/
     int i = indexPath.row;
-    [res.textLabel setText:[NSString stringWithFormat:@"%d: %f %d %d", order[i].orderNo, order[i].price, order[i].qty, order[i].mqty, nil]];
+    [res setupWith:&(order[i])];
+    //[res.textLabel setText:[NSString stringWithFormat:@"%d: %f %d %d", order[i].orderNo, order[i].price, order[i].qty, order[i].mqty, nil]];
     return res;
 }
 
 // UITableViewDelegate methods
+
+- (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section {
+    NSArray * nibViews = [[NSBundle mainBundle] loadNibNamed:@"GIOrderQueueHeadeView" owner:self options:nil];
+    return [nibViews objectAtIndex:0];
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section {
+    return 32;
+}
+
 
 @end

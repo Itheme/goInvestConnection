@@ -41,7 +41,7 @@
     [request setValue:@"text/plain" forHTTPHeaderField:@"Content-Type"];
     [request setValue:@"" forHTTPHeaderField:@"Accept-Encoding"];
     
-    [request setHTTPBody: [f makeBuffer]];
+    [request setHTTPBody: [f makeBufferWith:nil]];
     
     __block GIChannel *ch = self.channel;
     __block NSString *rec = receipt;
@@ -81,7 +81,7 @@
             
     [request setValue:@"text/plain" forHTTPHeaderField:@"Content-Type"];
     
-    [request setHTTPBody: [f makeBuffer]];
+    [request setHTTPBody: [f makeBufferWith:nil]];
     
     //__block GIWriter *this = self;
     AFHTTPRequestOperation *ro = [[AFHTTPRequestOperation alloc] initWithRequest:request];
@@ -110,7 +110,7 @@
     
     [request setValue:@"text/plain" forHTTPHeaderField:@"Content-Type"];
     
-    [request setHTTPBody: [f makeBuffer]];
+    [request setHTTPBody: [f makeBufferWith:nil]];
     
     //__block GIWriter *this = self;
     AFHTTPRequestOperation *ro = [[AFHTTPRequestOperation alloc] initWithRequest:request];
@@ -122,6 +122,37 @@
     }];
     [ro start];
 
+}
+
+- (void) sendTransaction:(NSString *) name Ticker:(NSString *) ticker Param:(NSString *) param Receipt:(NSString *)receipt {
+    NSMutableDictionary *headers = [self defaultHeaders:receipt Subscription:nil];
+    [headers addEntriesFromDictionary: @{@"destination" : @"orders.add"/*destination*/}];
+    //NSMutableDictionary *body = [@{@"TICKER": ticker, @"BUYSELL": @"B", @"PRICE": @[@6000, @0], @"QUANTITY": @2} mutableCopy];
+    NSMutableDictionary *body = [@{@"columns": @[@"ACCOUNT", @"TICKER", @"BUYSELL", @"PRICE", @"QUANTITY"], @"data": @[@[@"D000200ZERNB", ticker,  @"B", @[@6000, @0], @2]]} mutableCopy];
+    StompFrame *f = [[StompFrame alloc] initWithCommand:scSEND Headers:headers];
+    
+    NSURL *url = [NSURL URLWithString:[self.channel.status sessioned:@"send"] relativeToURL:self.channel.targetURL];
+	NSMutableURLRequest *request = [[NSMutableURLRequest alloc] initWithURL:url];
+    [request setHTTPMethod:@"POST"];
+    //[request setAllHTTPHeaderFields:headers];
+    
+    [request setValue:@"text/plain" forHTTPHeaderField:@"Content-Type"];
+    [request setValue:@"" forHTTPHeaderField:@"Accept-Encoding"];
+    NSError *error = nil;
+    [request setHTTPBody: [f makeBufferWith:[NSJSONSerialization dataWithJSONObject:body options:0 error:&error]]];
+    
+    __block GIChannel *ch = self.channel;
+    __block NSString *rec = receipt;
+    AFHTTPRequestOperation *ro = [[AFHTTPRequestOperation alloc] initWithRequest:request];
+    [ro setCompletionBlockWithSuccess:^(AFHTTPRequestOperation *operation, id responseObject) {
+        NSString *res = [NSString stringWithCString:[operation.responseData bytes] encoding:NSUTF8StringEncoding];
+        if (![res isEqualToString:@"OK"])
+            NSLog(@"Strange response for %@: %@", rec, res);
+        [ch writerSuccededForReceipt:rec];
+    } failure:^(AFHTTPRequestOperation *operation, NSError *error) {
+        [ch writerFailedForReceipt:rec WithError:error];
+    }];
+    [ro start];
 }
 
 - (id) initWithChannel:(GIChannel *)ch {

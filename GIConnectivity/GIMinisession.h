@@ -7,6 +7,8 @@
 //
 
 #import <Foundation/Foundation.h>
+#import "GIOrderQueueKeeper.h"
+#import "GIWonOrdersKeeper.h"
 
 typedef enum GIMinisessionStatusEnum {
     msUnknown = 0,
@@ -57,6 +59,9 @@ static NSString *kSessionStatusKey = @"status";
 - (NSString *) reuseId;
 - (NSString *) subscriptionParams;
 - (NSComparisonResult) comareWith:(GIMinisession *)s;
+- (GIOrderQueueKeeper *)setupOrderQueueKeeper:(BOOL) buy Table:(UITableView *)table;
+- (GIWonOrdersKeeper *)setupWonOrdersKeeperFor:(UITableView *)table;
+- (void) dropTableConnection;
 
 @end
 

@@ -49,21 +49,16 @@
 
 static char contentLengthHeader[] = "content-length:";
 
-- (NSString *)encodedHeaders {
-    __block NSString *l = [headers valueForKey:@"content-length"];
-    __block NSString *res = l;
-    if (res)
-        res = [NSString stringWithFormat:@"content-length:%@\n", res];
-    else
-        res = @"";
+- (NSString *)encodedHeaders:(NSUInteger) contentLength {
+    __block NSString *res = [NSString stringWithFormat:@"content-length:%d\n", contentLength];
     [headers enumerateKeysAndObjectsUsingBlock:^(id key, id obj, BOOL *stop) {
-        if (![key isEqual:l])
+        if (![key isEqualToString:@"content-length"])
             res = [NSString stringWithFormat:@"%@%@:%@\n", res, key, obj];
     }];
     return res;
 }
 
-- (NSString *)encodedBody {
+- (NSData *)encodedBodyWith:(NSData *) addendum {
     NSString *res;
     switch (command) {
         case scCONNECT:
@@ -78,10 +73,20 @@ static char contentLengthHeader[] = "content-length:";
         case scUNSUBSCRIBE:
             res = @"UNSUBSCRIBE";
             break;
+        case scSEND:
+            res = @"SEND";
+            break;
         default:
             return nil;
     }
-    return [NSString stringWithFormat:@"%@\n%@\n\0", res, [self encodedHeaders], nil];
+    if (addendum) {
+        res = [NSString stringWithFormat:@"%@\n%@\n", res, [self encodedHeaders:[addendum length]], nil];
+        NSMutableData *d = [[res dataUsingEncoding:NSUTF8StringEncoding] mutableCopy];
+        [d appendData:addendum];
+        [d appendBytes:"\n\0" length:2];
+        return d;
+    } else
+        return [[NSString stringWithFormat:@"%@\n%@\n\0", res, [self encodedHeaders:0], nil] dataUsingEncoding:NSUTF8StringEncoding];
 }
 
 - (id) initWithCommand:(StompCommand) sc Headers:(NSDictionary *) h {
@@ -100,10 +105,10 @@ static char contentLengthHeader[] = "content-length:";
     [headers setValue:value forKey:key];
 }
 
-- (NSData *)makeBuffer {
-    NSString *tmp = [self encodedBody];
+- (NSData *)makeBufferWith:(NSData *) addendum {
+    //NSString *tmp = ;
     //NSLog(@"%@", tmp);
-    return [tmp dataUsingEncoding:NSUTF8StringEncoding];
+    return [self encodedBodyWith:addendum];
 }
 
 - (id) initWithSeqNum:(int) aseqnum FirstByte:(char *) rawdata ByteCount:(uint) bytesTotal ContentLength:(uint) contentLength {

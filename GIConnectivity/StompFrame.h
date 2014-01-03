@@ -53,7 +53,7 @@ typedef enum StompCommandsEnum {
 
 - (id) initWithCommand:(StompCommand) sc Headers:(NSDictionary *) h;
 - (void) addHeader:(id)value forKey:(id)key;
-- (NSData *)makeBuffer;
+- (NSData *)makeBufferWith:(NSData *) addendum;
 + (StompFrame *)feed:(void *)d ContentLength:(NSInteger)contentLength MaxLength:(NSUInteger)len;
 //+ (NSData *) frameDataWithCommand:(StompCommand) sc;
 + (NSInteger) extractContentLength:(void *)d Length:(NSUInteger)len;

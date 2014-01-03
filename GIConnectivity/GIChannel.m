@@ -336,6 +336,17 @@
     [self.clie gotFrame:f];
 }
 
+- (BOOL) performTransaction:(NSString *) trans Param:(NSString *) param Success:(StompSuccessBlock) successBlock Failure:(StompFailureBlock) failureBlock {
+    if (self.closed) return NO;
+    FrameRequest *fr = nil;
+    NSString *rec = [self generateReceipt];
+    fr = [[FrameRequest alloc] initWithParam:param Success:successBlock Failure:failureBlock receipt:rec];
+    fr.subscriptionId = [self addPendingRequest:fr Table:trans];
+    [self.writer sendTransaction:trans Ticker:param Param:param Receipt:rec];
+    return YES;
+
+}
+
 - (void) setStatus:(GIChannelStatus *)astatus {
     status = astatus;
     if (!astatus) {

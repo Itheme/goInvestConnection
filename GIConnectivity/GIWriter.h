@@ -25,5 +25,6 @@
 - (void) sendGetTickers:(NSString *) selector;
 - (void) sendSubscribe:(NSString *) table Param:(NSString *)param Receipt:(NSString *)receipt SubscriptionId:(NSString *)subscription;
 - (void) sendUnsubscribe:(NSString *) table Param:(NSString *) param Receipt:(NSString *)receipt SubscriptionId:(NSString *)subscription;
+- (void) sendTransaction:(NSString *) name Ticker:(NSString *) ticker Param:(NSString *) param Receipt:(NSString *)receipt;
 
 @end

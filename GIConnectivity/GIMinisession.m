@@ -21,6 +21,8 @@
 //@property (nonatomic, retain) NSString *instrid;
 @property (nonatomic, retain) NSMutableDictionary *times;
 @property (nonatomic) CFAbsoluteTime startTime;
+@property (nonatomic, retain) GIOrderQueueKeeper *oqKeeper;
+@property (nonatomic, retain) GIWonOrdersKeeper *woKeeper;
 
 @end
 
@@ -41,6 +43,7 @@ CFAbsoluteTime CFAbsoluteTimeGetMedvedev() {
 @synthesize startTime;
 @synthesize timeTillRun, timeTillStop, percentDone;
 @synthesize scheduleString;
+@synthesize oqKeeper, woKeeper;
 
 - (id) initWithLongId:(NSString *)alongId Caption:(NSString *)cap {
     self = [super init];
@@ -189,5 +192,42 @@ CFAbsoluteTime CFAbsoluteTimeGetMedvedev() {
 - (NSString *) subscriptionParams {
     return [NSString stringWithFormat:@"ticker='%@'", self.longId, nil];
 }
+
+- (GIOrderQueueKeeper *)setupOrderQueueKeeper:(BOOL) buy Table:(UITableView *)table {
+    if (self.oqKeeper == nil)
+        self.oqKeeper = [[GIOrderQueueKeeper alloc] initForBuy:buy];
+    self.oqKeeper.tableToUse = table;
+    table.dataSource = self.oqKeeper;
+    table.delegate = self.oqKeeper;
+    return self.oqKeeper;
+}
+
+- (GIWonOrdersKeeper *)setupWonOrdersKeeperFor:(UITableView *)table {
+    self.oqKeeper = nil;
+    if (self.woKeeper == nil)
+        self.woKeeper = [[GIWonOrdersKeeper alloc] init];
+    self.woKeeper.tableToUse = table;
+    table.dataSource = self.woKeeper;
+    table.delegate = self.woKeeper;
+    return self.woKeeper;
+}
+
+- (void) dropTableConnection {
+    if (self.woKeeper) {
+        if (self.woKeeper.tableToUse) {
+            self.woKeeper.tableToUse.delegate = nil;
+            self.woKeeper.tableToUse.dataSource = nil;
+            self.woKeeper.tableToUse = nil;
+        }
+    }
+    if (self.oqKeeper) {
+        if (self.oqKeeper.tableToUse) {
+            self.oqKeeper.tableToUse.delegate = nil;
+            self.oqKeeper.tableToUse.dataSource = nil;
+            self.oqKeeper.tableToUse = nil;
+        }
+    }
+}
+
 
 @end

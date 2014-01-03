@@ -48,5 +48,6 @@
 - (void) unsubscribe:(NSString *) table Param:(NSString *) param;
 - (void) writerSuccededForReceipt:(NSString *)receipt;
 - (void) writerFailedForReceipt:(NSString *)receipt WithError:(NSError *)error;
+- (BOOL) performTransaction:(NSString *) trans Param:(NSString *) param Success:(StompSuccessBlock) successBlock Failure:(StompFailureBlock) failureBlock;
 
 @end

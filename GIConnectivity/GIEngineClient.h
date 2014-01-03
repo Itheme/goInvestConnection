@@ -17,12 +17,12 @@
 @interface GIEngineClient : GIClient
 
 
-@property (nonatomic, retain, setter = setTarget:) GIMinisession *target;
+@property (nonatomic, readonly, retain/*, setter = setTarget:*/) GIMinisession *target;
 @property (nonatomic) id<OrderQueueDelegate> targetSubscriber;
 
 + (GIEngineClient *) sharedClient;
 + (GIEngineClient *) setupSharedClient;
 
-- (void) setupOQDelegatesFor:(UITableView *)table;
+- (void) setupOQDelegatesFor:(UITableView *)table session:(GIMinisession *)s;
 
 @end
