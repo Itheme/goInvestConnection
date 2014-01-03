@@ -130,7 +130,7 @@
     NSMutableDictionary *headers = [self defaultHeaders:receipt Subscription:nil];
     [headers addEntriesFromDictionary: @{@"destination" : @"orders.add"/*destination*/}];
     //NSMutableDictionary *body = [@{@"TICKER": ticker, @"BUYSELL": @"B", @"PRICE": @[@6000, @0], @"QUANTITY": @2} mutableCopy];
-    NSMutableDictionary *body = [@{@"columns": @[@"ACCOUNT", @"TICKER", @"BUYSELL", @"PRICE", @"QUANTITY"], @"data": @[@[@"D000200ZERNB", ticker,  @"B", @[@6000, @0], @2]]} mutableCopy];
+    NSMutableDictionary *body = [@{@"columns": @[@"ACCOUNT", @"TICKER", @"BUYSELL", @"PRICE", @"QUANTITY"], @"data": @[@[@"D000200ZERNB", ticker,  @"B", /*@[@6000, @0]*/ @6000.0, @2]]} mutableCopy];
     StompFrame *f = [[StompFrame alloc] initWithCommand:scSEND Headers:headers];
     
     NSURL *url = [NSURL URLWithString:[self.channel.status sessioned:@"send"] relativeToURL:self.channel.targetURL];

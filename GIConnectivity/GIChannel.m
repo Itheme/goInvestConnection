@@ -370,7 +370,7 @@
         }
     } else
         if (f.subscription)
-            NSLog(@"HEY! Lost subscription: %@", f.receipt);
+            NSLog(@"HEY! Lost subscription: %@", f.subscription);
 
     [self.clie gotFrame:f];
 }

@@ -50,10 +50,14 @@
 static char contentLengthHeader[] = "content-length:";
 
 - (NSString *)encodedHeaders:(NSUInteger) contentLength {
-    __block NSString *res = [NSString stringWithFormat:@"content-length:%d\n", contentLength];
+    __block NSString *res = @"";
+    if (contentLength > 0) res = [NSString stringWithFormat:@"content-length:%d\n", contentLength];
     [headers enumerateKeysAndObjectsUsingBlock:^(id key, id obj, BOOL *stop) {
         if (![key isEqualToString:@"content-length"])
-            res = [NSString stringWithFormat:@"%@%@:%@\n", res, key, obj];
+            if (res)
+                res = [NSString stringWithFormat:@"%@%@:%@\n", res, key, obj];
+            else
+                res = [NSString stringWithFormat:@"%@:%@\n", key, obj];
     }];
     return res;
 }
@@ -80,13 +84,24 @@ static char contentLengthHeader[] = "content-length:";
             return nil;
     }
     if (addendum) {
-        res = [NSString stringWithFormat:@"%@\n%@\n", res, [self encodedHeaders:[addendum length]], nil];
+        int l = [addendum length];
+        res = [NSString stringWithFormat:@"%@\n%@\n", res, [self encodedHeaders:l + 1], nil];
+        char b[l + 2];
+        memcpy(b, [addendum bytes], l);
+        //NSLog(@"Output: %@", res);
+        //return [res dataUsingEncoding:NSUTF8StringEncoding];
         NSMutableData *d = [[res dataUsingEncoding:NSUTF8StringEncoding] mutableCopy];
-        [d appendData:addendum];
-        [d appendBytes:"\n\0" length:2];
+        NSLog(@"%c%c%c", b[l - 2], b[l - 1], b[l]);
+        b[l] = '\n';
+        b[l + 1] = 0;
+        [d appendBytes:b length:l + 2];
+//        [d appendBytes:"\n\n\0" length:3];
+        NSLog(@"Output: %@", [NSString stringWithUTF8String:[d bytes]]);
         return d;
-    } else
-        return [[NSString stringWithFormat:@"%@\n%@\n\0", res, [self encodedHeaders:0], nil] dataUsingEncoding:NSUTF8StringEncoding];
+    }
+    NSString *output = [NSString stringWithFormat:@"%@\n%@\n\0", res, [self encodedHeaders:0], nil];
+    NSLog(@"Output: %@", output);
+    return [output dataUsingEncoding:NSUTF8StringEncoding];
 }
 
 - (id) initWithCommand:(StompCommand) sc Headers:(NSDictionary *) h {

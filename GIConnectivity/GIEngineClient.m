@@ -11,6 +11,7 @@
 #import "GIOrderQueueKeeper.h"
 #import "GIOrderQueueCell.h"
 #import "GIWonOrdersKeeper.h"
+#import "GIRowParser.h"
 
 @interface GIEngineClient ()
 
@@ -44,16 +45,10 @@
         self.xorders = [t setupOrderQueueKeeper:YES Table:self.currentTable];
         #warning AUCTION TYPE HERE!
         [self.channel scheduleSubscriptionRequest:@"orderqueue" Param:[t subscriptionParams] Success:^(StompFrame *f) {
-            NSArray *columns = [f.jsonData valueForKey:@"columns"];
-            NSUInteger orderNoIndex = [columns indexOfObject:@"ORDERNO"];
-            NSUInteger orderStatusIndex = [columns indexOfObject:@"ORDERSTATUS"];
-            NSUInteger priceIndex = [columns indexOfObject:@"PRICE"];
-            NSUInteger qtyIndex = [columns indexOfObject:@"QUANTITY"];
-            NSUInteger matchingQtyIndex = [columns indexOfObject:@"MATCHINGQTY"];
-            NSArray *data = [f.jsonData valueForKey:@"data"];
+            GIRowParser *oqParser = [[GIRowParser alloc] initWithDictionary:f.jsonData ColumnNames:@[@"ORDERNO", @"ORDERSTATUS", @"PRICE", @"QUANTITY", @"MATCHINGQTY"]];
             [this.xorders beginUpdate];
-            for (NSArray *row in data) {
-                NSString *v = [row objectAtIndex:orderStatusIndex];
+            [oqParser enumRowsUsingBlock5:^(id orderNo, id orderStatus, id price, id qtyV, id mqtyV) {
+                NSString *v = orderStatus;
                 unichar c = [v characterAtIndex:0];
                 QOrderStatus stat;
                 switch (c) {
@@ -76,10 +71,10 @@
                         stat = qoActive;
                         break;
                 }
-                int qty = [[row objectAtIndex:qtyIndex] intValue];
-                int mqty = [[row objectAtIndex:matchingQtyIndex] intValue];
-                [this.xorders gotDataForOrderNo:[[row objectAtIndex:orderNoIndex] intValue] Status:stat Price:[row objectAtIndex:priceIndex] Qty:qty MatchingQty:mqty];
-            }
+                int qty = [qtyV intValue];
+                int mqty = [mqtyV intValue];
+                [this.xorders gotDataForOrderNo:[orderNo intValue] Status:stat Price:price Qty:qty MatchingQty:mqty];
+            }];
             [this.xorders endUpdate];
             //NSLog(@"OQOQOQOQOQOQOQOQOQOQOQOQ %@", f.jsonData);
         } Failure:^(NSString *errorMessage) {
@@ -91,25 +86,16 @@
             self.xwonOrders = [t setupWonOrdersKeeperFor:self.currentTable];
             if (!self.xwonOrders.loaded)
                 [self.channel scheduleSubscriptionRequest:@"lasttrades" Param:[t subscriptionParams] Success:^(StompFrame *f) {
-                    NSArray *columns = [f.jsonData valueForKey:@"columns"];
-                    NSUInteger tradeNoIndex = [columns indexOfObject:@"TRADENO"];
-                    NSUInteger tradeTimeIndex = [columns indexOfObject:@"TRADETIME"];
-                    NSUInteger priceIndex = [columns indexOfObject:@"PRICE"];
-                    NSUInteger qtyIndex = [columns indexOfObject:@"QUANTITY"];
-                    NSUInteger valueIndex = [columns indexOfObject:@"VALUE"];
+                    GIRowParser *wonOrdersParser = [[GIRowParser alloc] initWithDictionary:f.jsonData ColumnNames:@[@"TRADENO", @"TRADETIME", @"PRICE", @"QUANTITY", @"VALUE"]];
 
-                    NSArray *data = [f.jsonData valueForKey:@"data"];
                     [this.xwonOrders beginUpdate];
-                    for (NSArray *row in data) {
-                        id tradeNo = [row objectAtIndex:tradeNoIndex];
-                        if ([this.xwonOrders needsDataForTradeNo:[NSString stringWithFormat:@"%@", tradeNo, nil]]) {
-                            [this.xwonOrders gotDataForTradeNo:tradeNo At:[row objectAtIndex:tradeTimeIndex] Price:[row objectAtIndex:priceIndex] Qty:[row objectAtIndex:qtyIndex] Value:[row objectAtIndex:valueIndex]];
-                        }
-                    }
+                    [wonOrdersParser enumRowsUsingBlock5:^(id tradeNo, id tradeTime, id price, id qty, id value) {
+                        if ([this.xwonOrders needsDataForTradeNo:[NSString stringWithFormat:@"%@", tradeNo, nil]])
+                            [this.xwonOrders gotDataForTradeNo:tradeNo At:tradeTime Price:price Qty:qty Value:value];
+                    }];
                     [this.xwonOrders endUpdate];
 
                 } Failure:^(NSString *errorMessage) {
-                    
                     [this gotProblemsWithOQ:errorMessage];
                 }];
             else
