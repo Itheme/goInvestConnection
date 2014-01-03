@@ -17,6 +17,7 @@
 @required
 
 - (void) connectionFailed:(NSError *)error;
+- (void) connectionLost;
 - (void) gotFrame:(StompFrame *)f;
 - (void) requestCompleted:(NSString *)table Param:(NSString *) param Data:(NSString *) data;
 

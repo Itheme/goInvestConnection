@@ -36,7 +36,7 @@ static NSString *kStatusMessage01 = @"Could not download marketplaces!";
 static NSString *kStatusMessage02 = @"Could not find MXZERNO in marketplaces!";
 static NSString *kStatusMessage03 = @"Channel failed to startup (%@)";
 static NSString *kStatusMessage04 = @"Failed to download marketplaces (error: %@, reply: %@)";
-static NSString *kStatusMessage05 = @"";
+static NSString *kStatusMessage05 = @"Connection is lost";
 static NSString *kStatusMessage06 = @"";
 static NSString *kStatusMessage07 = @"";
 static NSString *kStatusMessage08 = @"";
@@ -108,8 +108,9 @@ static NSString *kStatusMessage15 = @"";
     switch (f.command) {
         case scCONNECTED:
             self.state = csConnected;
-            [self.channel.writer sendGetTickers:@"MXZERNO"];
-            [self.channel scheduleSubscriptionRequest:@"lasttrades" Param:nil];
+            [self.channel.writer sendGetTickers:@"marketplace=MXZERNO"];
+            //[self.channel scheduleSubscriptionRequest:@"lasttrades" Param:[NSString stringWithFormat:@"ticker='%@'", @"MXZERNO.GSEL.LOT121025010", nil]];
+            [self.channel scheduleSubscriptionRequest:@"tradetime" Param:[NSString stringWithFormat:@"ticker='%@'", @"MXZERNO.GSEL.LOT121025101" /*@"MXZERNO.GSEL.LOT121025010"*/, nil]];
             break;
         default:
             break;
@@ -117,7 +118,12 @@ static NSString *kStatusMessage15 = @"";
 }
 
 - (void) requestCompleted:(NSString *)table Param:(NSString *)param Data:(NSString *)data {
-    NSLog(@"Wow!");
+    NSLog(@"rq done.");
+}
+
+- (void) connectionLost {
+    self.lastStatusMessage = kStatusMessage05;
+    self.state = csDisconnectedWithProblem;
 }
 
 - (void) setState:(GIClientState)astate {

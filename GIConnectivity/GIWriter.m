@@ -22,12 +22,12 @@
 #warning session here
 }
 
-- (void) genericSend:(NSString *) receipt Destination:(NSString *) destination Method:(NSString *) method Selector:(NSString *) selector {
+- (void) genericSend:(StompCommand) sc Receipt:(NSString *) receipt Destination:(NSString *) destination Method:(NSString *) method Selector:(NSString *) selector {
     NSMutableDictionary *headers = [self defaultHeaders:receipt];
     [headers addEntriesFromDictionary: @{@"destination" : destination}];
     if (selector)
         [headers addEntriesFromDictionary: @{@"selector" : selector}];
-    StompFrame *f = [[StompFrame alloc] initWithCommand:scREQUEST Headers:headers];
+    StompFrame *f = [[StompFrame alloc] initWithCommand:sc Headers:headers];
     
     NSURL *url = [NSURL URLWithString:[self.channel.status sessioned:method] relativeToURL:self.channel.targetURL];
 	NSMutableURLRequest *request = [[NSMutableURLRequest alloc] initWithURL:url];
@@ -54,11 +54,11 @@
 }
 
 - (void) sendGetTickers:(NSString *) selector {
-    [self genericSend:@"tickersReceipt" Destination:@"list" Method:@"send" Selector:selector];
+    [self genericSend: scREQUEST Receipt:@"tickersReceipt" Destination:@"list" Method:@"send" Selector:selector];
 }
 
 - (void) sendSubscribe:(NSString *) table Param:(NSString *)param Receipt:(NSString *)receipt {
-    [self genericSend:receipt Destination:table Method:@"send" Selector:param];
+    [self genericSend: scSUBSCRIBE Receipt:receipt Destination:table Method:@"send" Selector:param];
 }
 
 - (void) sendConnect:(NSString *)login Password:(NSString *)pwd {

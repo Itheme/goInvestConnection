@@ -153,6 +153,10 @@
 }
 
 - (void) gotFrame:(StompFrame *)f {
+    if (f.command == scInvalidSID) {
+        [self.clie connectionLost];
+        return;
+    }
     if (f.sessionId) {
         self.sessionId = f.sessionId;
     }
