@@ -8,6 +8,9 @@
 
 #import <Foundation/Foundation.h>
 #import "AFHTTPClient.h"
+#import "StompFrame.h"
+
+
 
 @class GIChannel;
 
@@ -18,7 +21,9 @@
 
 - (id) initWithChannel:(GIChannel *)ch;
 - (void) sendConnect:(NSString *)login Password:(NSString *)pwd;
+- (void) sendDisconnect;
 - (void) sendGetTickers:(NSString *) selector;
 - (void) sendSubscribe:(NSString *) table Param:(NSString *)param Receipt:(NSString *)receipt;
+- (void) sendUnsubscribe:(NSString *) table Param:(NSString *) param Receipt:(NSString *)receipt;
 
 @end

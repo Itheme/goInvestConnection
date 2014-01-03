@@ -8,20 +8,26 @@
 
 #import <Foundation/Foundation.h>
 #import "GIChannel.h"
+#import "GIMinisession.h"
+
 
 typedef enum GIClientStateEnum {
     csDisconnected = 0,
     csDisconnectedWithProblem = 1,
     csConnecting = 2,
-    csConnected = 3
+    csConnected = 3,
+    csDisconnecting = 4
 } GIClientState;
 
 @interface GIClient : NSObject <ChannelDelegate>
 
 @property (nonatomic, readonly) GIClientState state;
 @property (nonatomic, readonly, retain) NSString *lastStatusMessage;
+@property (nonatomic, readonly, retain) NSDictionary *minisessions;
 
 - (id) initWithUser:(NSString *)alogin Pwd:(NSString *)apwd;
 - (void) connect;
+- (void) disconnect;
+
 
 @end

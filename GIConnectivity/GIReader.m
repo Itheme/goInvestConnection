@@ -11,21 +11,31 @@
 #import "StompFrame.h"
 #import "AFURLConnectionOperation.h"
 
+
+enum CspFrameParseResult {
+    prNotAFrame = 0,
+    prIncompleteFrame = -1,
+    prBadSeqNum = -2
+};
+
 @interface GIReader () {
-    char *accData;
-    int capacity, used, seqnum;
-    BOOL closed;
+    char *rawAccData, *gluedAccData;
+    int rcapacity, rused, gcapacity, gused, gseqnum, seqnum;
 }
 
 //@property (atomic, retain) NSMutableData *accumulator;
 @property (nonatomic, retain) NSMutableURLRequest *theRequest;
 @property (nonatomic, retain) AFURLConnectionOperation *readerOperation;
 
+@property (atomic) CFHTTPMessageRef httpMessageRef;
+@property (atomic) BOOL closed;
+
 @end
 
 @implementation GIReader
 
 @synthesize channel;
+@synthesize httpMessageRef, closed;
 @synthesize theRequest, readerOperation;
 //@synthesize accumulator;
 
@@ -42,7 +52,7 @@
 
 - (void) cfStreamRun:(NSURL *)url {
     CFURLRef cfURL = (__bridge CFURLRef)url;
-    CFHTTPMessageRef httpMessageRef = CFHTTPMessageCreateRequest(NULL, CFSTR("GET"), cfURL, kCFHTTPVersion1_0);
+    self.httpMessageRef = CFHTTPMessageCreateRequest(NULL, CFSTR("GET"), cfURL, kCFHTTPVersion1_0);
     CFReadStreamRef stream = CFReadStreamCreateForHTTPRequest(CFAllocatorGetDefault(), httpMessageRef);
     if (!CFReadStreamOpen(stream)) {
         CFStreamError myErr = CFReadStreamGetError(stream);
@@ -66,7 +76,8 @@
                 //reportError(error);
             }
         } while( numBytesRead > 0 );
-        [self performSelectorOnMainThread:@selector(doHang) withObject:nil waitUntilDone:NO];        
+        if (!self.closed)
+            [self performSelectorOnMainThread:@selector(doHang) withObject:nil waitUntilDone:NO];        
     }
 }
 
@@ -82,28 +93,6 @@
     [theRequest setHTTPShouldUsePipelining:YES];*/
     [self performSelectorInBackground:@selector(cfStreamRun:) withObject:url];
     return;
-    self.readerOperation = [[AFURLConnectionOperation alloc] initWithRequest:theRequest];
-    self.readerOperation.outputStream.delegate = self;
-    /*[readerOperation setDownloadProgressBlock:^(NSUInteger bytesRead, long long totalBytesRead, long long totalBytesExpectedToRead) {
-        NSLog(@"Wha???? %lld", totalBytesRead);
-    }];*/
-    readerOperation.outputStream = self;
-    [readerOperation start];
-
-//    NSURLConnectionQueuedLoading
-//    NSURLConnection *theConnection= [[NSURLConnection alloc] initWithRequest:theRequest delegate:self startImmediately:NO];
-    
-/*    [NSURLConnection sendAsynchronousRequest:theRequest queue:[NSOperationQueue currentQueue] completionHandler:^(NSURLResponse*r, NSData*d, NSError*e) {
-        if (d) {
-            StompFrame *sf = [StompFrame feed:&d];
-        }
-        if (e) {
-            NSLog(@"reader error: %@", e);
-        } else {
-            
-        }
-    }];*/
-#warning temporary
     
     //NSRunLoop *rl = [NSRunLoop currentRunLoop];
     //[theConnection scheduleInRunLoop:rl forMode:NSRunLoopCommonModes];
@@ -125,8 +114,10 @@
     if (self) {
         
         //self.accumulator = [[NSMutableData alloc] init];
-        accData = malloc(16384);
-        capacity = 16384;
+        rawAccData = malloc(16384);
+        gluedAccData = malloc(16384);
+        rcapacity = 16384;
+        gcapacity = 16384;
         self.channel = ch;
         [self hang];
     }
@@ -134,13 +125,10 @@
 }
 
 - (void) dealloc {
-    free(accData);
+    free(rawAccData);
+    free(gluedAccData);
     
 }
-
-- (void)open {
-}
-
 
 - (void) doHang {
     [self performSelector:@selector(hang) withObject:nil afterDelay:1.0];
@@ -149,40 +137,138 @@
 - (void) close {
     if (closed) return;
     closed = YES;
-    //NSLog(@"reopening");
-    //[self performSelector:@selector(hang) withObject:nil afterDelay:5.0];
-    [self performSelectorOnMainThread:@selector(doHang) withObject:nil waitUntilDone:NO];
+    CFRelease(httpMessageRef);
 }
+
+- (BOOL) tryExtractFrameWith:(NSInteger) contentLength {
+    char *ptr = gluedAccData;
+    for (int limit = contentLength; limit < gused; limit++)
+        if (ptr[limit] == 0) {
+            limit++;
+            StompFrame *f = [StompFrame feed:ptr ContentLength:contentLength MaxLength:limit];
+            if (f) {
+                [self.channel gotFrame:f];
+            } else {
+                NSLog(@"What a pitty! fake frame!");
+            }
+            ptr += limit;
+            gused -= limit;
+            if (gused > 0) {
+                memcpy(gluedAccData, ptr, gused);
+            }
+            return TRUE;
+        }
+    return FALSE;
+}
+
+- (BOOL) writeGluedData:(char *)buffer Length:(NSUInteger) len {
+    while (gused + len > gcapacity) {
+        gcapacity *= 2;
+        void *temp = malloc(gcapacity);
+        if (gused > 0) memcpy(temp, gluedAccData, gused);
+        free(gluedAccData);
+        gluedAccData = temp;
+    }
+    memcpy(gluedAccData + gused, buffer, len);
+    gused += len;
+
+    char *ptr = gluedAccData;
+    
+    BOOL gotFrame = FALSE;
+    while (gused > 0) {
+        NSUInteger clength = [StompFrame extractContentLength:ptr Length:gused];
+        if (clength > gused) {
+            NSLog(@"incomplete stomp frame. Expected %d. Got %d", clength, gused);
+            break;
+        }
+        if ([self tryExtractFrameWith:clength])
+            gotFrame = TRUE;
+    }
+    return gotFrame;
+}
+
+- (int) bufferHasStompFrame:(const uint8_t *)buffer maxLength:(NSUInteger)len {
+    if (len > 20) {
+        NSString *s = [[NSString alloc] initWithBytes:buffer length:20 encoding:NSUTF8StringEncoding];
+        if (s)
+            if ([s hasPrefix:@"0010"]) {
+                NSString *xs = [NSString stringWithFormat:@"0x%@", [s substringWithRange:NSMakeRange(4, 8)], nil];
+                int aseqnum = [xs hexValue];
+                if ((aseqnum >= seqnum - 20) && (aseqnum < seqnum + 20)) {
+                    xs = [NSString stringWithFormat:@"0x%@", [s substringWithRange:NSMakeRange(12, 8)], nil];
+                    int length = [xs hexValue];
+                    if (length + 20 - 1 > len) {
+                        //NSLog(@"incomplete csp frame. Expected %d + 20. Got %d", length, rused);
+                        return prIncompleteFrame;
+                    }
+                    NSLog(@"seqnum = %d", aseqnum);
+                    seqnum = aseqnum;
+                    return length;
+                } else
+                    return prBadSeqNum;
+            }
+    }
+    return prNotAFrame;
+}
+
+- (NSInteger)writeKnownBuffer:(const uint8_t *)buffer cspLength:(NSUInteger) cspLen maxLength:(NSUInteger)maxLen {
+    const uint8_t *ptr = buffer + 20;
+    [self writeGluedData:(char *)ptr Length:cspLen];
+    int xlen = cspLen + 20;
+    if (xlen < maxLen)
+        return xlen + [self write:ptr + cspLen maxLength:maxLen - xlen];
+    return maxLen;
+}
+#warning make 20 a constant
 
 // stream methods
 
 - (NSInteger)write:(const uint8_t *)buffer maxLength:(NSUInteger)len {
-    while (used + len > capacity) {
-        capacity *= 2;
-        void *temp = malloc(capacity);
-        if (used > 0) memcpy(temp, accData, used);
-        free(accData);
-        accData = temp;
+    if (len == 0) return 0;
+    int res = [self bufferHasStompFrame:buffer maxLength:len];
+    if (rused > 0) {
+        if (res == prIncompleteFrame)
+            @throw [NSException exceptionWithName:@"CSP layer exception" reason:@"Got two incomplete CSP frames in a row!" userInfo:nil];
+        if (res != prBadSeqNum) // assuming just misstaken header match
+            if (res != prNotAFrame)
+                return [self writeKnownBuffer:buffer cspLength:res maxLength:len];
+        // else adding to rawAccData
+    } else {
+        if (res == prNotAFrame) {
+            NSLog(@"whole lot of problems: %@", [[NSString alloc] initWithBytes:rawAccData length:rused encoding:NSUTF8StringEncoding]);
+            @throw [NSException exceptionWithName:@"Wrong prefix in csp protocol" reason:@"Wrong prefix in csp protocol" userInfo:nil];
+        }
+        if (res == prBadSeqNum)
+            @throw [NSException exceptionWithName:@"CSP layer exception" reason:@"Got bad seqnum!" userInfo:nil];
+        if (res != prIncompleteFrame)
+            return [self writeKnownBuffer:buffer cspLength:res maxLength:len];
     }
-    memcpy(accData + used, buffer, len);
-    used += len;
-    int i0 = 0;
+    while (rused + len > rcapacity) {
+        rcapacity *= 2;
+        void *temp = malloc(rcapacity);
+        if (rused > 0) memcpy(temp, rawAccData, rused);
+        free(rawAccData);
+        rawAccData = temp;
+    }
+    memcpy(rawAccData + rused, buffer, len);
+    rused += len;
+    char *ptr = rawAccData;
+    while (rused > 20) {
+        int res = [self bufferHasStompFrame:(uint8_t *)ptr maxLength:rused];
+        if ((res == prNotAFrame) || (res == prBadSeqNum))
+            @throw [NSException exceptionWithName:@"CSP layer exception" reason:@"WTF!?" userInfo:nil];
+        if (res == prIncompleteFrame) break;
+        ptr += 20;
+        [self writeGluedData:ptr Length:res];
+        rused -= res + 20;
+        ptr += res;
+    }
+    if (rused > 0) {
+        memcpy(rawAccData, ptr, rused);
+    }
+    
     NSString *s = [NSString stringWithCString:(const char *)buffer encoding:NSUTF8StringEncoding];
     NSLog(@"written: %@", s);
-    for (int i = i0; i < used; i++)
-        if (accData[i] == 0) {
-            StompFrame *f = [StompFrame feed:&(accData[i0]) Length:i - i0];
-            if (f) {
-                i0 = i + 1;
-                [self.channel gotFrame:f];
-                seqnum = f.seqnum;
-            }
-        }
-    if (i0 > 0) {
-        used -= i0;
-        if (used > 0)
-            memcpy(accData, &(accData[i0]), used);
-    }
     return len;
 }
 
@@ -216,16 +302,6 @@
 
 - (void)connection:(NSURLConnection *)connection didReceiveResponse:(NSURLResponse *)response {
     NSLog(@"ae");
-}
-
-- (void)connection:(NSURLConnection *)connection didReceiveData:(NSData *)data {
-    NSLog(@"af");
-    
-}
-
-- (NSInputStream *)connection:(NSURLConnection *)connection needNewBodyStream:(NSURLRequest *)request {
-    NSLog(@"ag");
-    
 }
 
 @end

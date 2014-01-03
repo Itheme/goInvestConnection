@@ -8,12 +8,7 @@
 
 #import "StompFrame.h"
 
-@interface NSString (HexValue)
 
--(int) hexValue;
--(NSString *) headerValueForName:(NSString *) name;
-
-@end
 
 
 @implementation NSString (HexValue)
@@ -41,14 +36,14 @@
 @property (nonatomic, retain) NSString *requestId;
 @property (nonatomic, retain) NSString *sessionId;
 @property (nonatomic, retain) NSString *message;
-@property (nonatomic, retain) NSString *jsonString;
+@property (nonatomic, retain) id jsonData;
 
 @end
 
 @implementation StompFrame
 
 @synthesize headers;
-@synthesize seqnum, receipt, destination, requestId, sessionId, message, jsonString;
+@synthesize seqnum, receipt, destination, requestId, sessionId, message, jsonData;
 @synthesize command;
 
 - (NSString *)encodedHeaders {
@@ -112,109 +107,81 @@
     return [tmp dataUsingEncoding:NSUTF8StringEncoding];
 }
 
-- (id) initWithSeqNum:(int) aseqnum Contents:(NSString *) content {
+- (id) initWithSeqNum:(int) aseqnum FirstByte:(char *) rawdata ByteCount:(uint) bytesTotal ContentLength:(uint) contentLength {
+    if (contentLength > 0) {
+        if (contentLength > bytesTotal) {
+            NSLog(@"Crab %d > %d !!!!!!!!!!!!!!!!!!!!!!", contentLength, bytesTotal);
+            return nil;
+        }
+    }
     self = [super init];
     if (self) {
         self.seqnum = aseqnum;
         __block int collected = 0;
         __block StompFrame *this = self;
-        __block int contentLength = 0;
         __block NSString *isid = nil;
+        NSString *content = [[NSString alloc] initWithBytes:rawdata length:bytesTotal - contentLength - 1 encoding:NSUTF8StringEncoding];
         [content enumerateLinesUsingBlock:^(NSString *line, BOOL *stop) {
-            /*NSRange r = [line rangeOfString:@"receipt-id:"];
-            if (r.location == NSNotFound) {
-                r = [line rangeOfString:@"content-length:"];
-                if (r.location == NSNotFound) {
-                    r = [line rangeOfString:@"destination:"];
-                    if (r.location == NSNotFound) {
-                        r = [line rangeOfString:@"request-id:"];
-                        if (r.location == NSNotFound) {
-                            r = [line rangeOfString:@"session:"];
-                            if (r.location == NSNotFound) {
-                                if ([line hasPrefix:@"RECEIPT"]) {// handling for simple messages
-                                    this.command = scRECEIPT;
-                                } else
-                                    if ([line hasPrefix:@"CONNECTED"]) {
-                                        this.command = scCONNECTED;
-                                    }
-                            } else {
-                                this.sessionId = [line substringFromIndex:NSMaxRange(r)];
-                            }
-                        } else {
-                            this.requestId = [line substringFromIndex:NSMaxRange(r)];
-                            collected++;
-                        }
-                    } else {
-                        this.destination = [line substringFromIndex:NSMaxRange(r)];
-                        collected++;
-                    }
-                } else {
-                    contentLength = [[line substringFromIndex:NSMaxRange(r)] intValue];
-                    collected++;
-                }
+            isid = [line headerValueForName:@"Invalid session ID:"];
+            if (isid) {
+                this.command = scInvalidSID;
+                *stop = YES;
             } else {
-                this.receipt = [line substringFromIndex:NSMaxRange(r)];
-                collected++;
-            }*/
+                if ([line hasPrefix:@"RECEIPT"]) {// handling for simple messages
+                    this.command = scRECEIPT;
+                } else
+                    if ([line hasPrefix:@"CONNECTED"]) {
+                        this.command = scCONNECTED;
+                    } else
+                        if ([line hasPrefix:@"ERROR"]) {
+                            this.command = scERROR;
+                        } else
+                            if ([line hasPrefix:@"MESSAGE"])
+                                this.command = scMESSAGE;
+                            else
+                                if ([line hasPrefix:@"CLOSED"])
+                                    this.command = scCLOSED;
+            }
+        }];
+        if (isid)
+            return self;
+        if (contentLength > 0) {
+            NSError *error = nil;
+            self.jsonData = [NSJSONSerialization JSONObjectWithData:[NSData dataWithBytes:rawdata + bytesTotal - contentLength - 1 length:contentLength] options:0 error:&error];
+            if (error) {
+                NSLog(@"JSON parsing error: %@", error);
+                NSLog(@"JSON raw data: %@", [NSString stringWithUTF8String:rawdata + bytesTotal - contentLength - 1]);
+                return nil;
+            }
+            //NSLog(@"JSON: %@", self.jsonData);
+        }
+        [content enumerateLinesUsingBlock:^(NSString *line, BOOL *stop) {
             NSString *v = [line headerValueForName:@"receipt-id:"];
             if (v)
                 this.receipt = v;
             else {
-                v = [line headerValueForName:@"content-length:"];
+                v = [line headerValueForName:@"destination:"];
                 if (v)
-                    contentLength = [v intValue];
+                    this.destination = v;
                 else {
-                    v = [line headerValueForName:@"destination:"];
+                    v = [line headerValueForName:@"request-id:"];
                     if (v)
-                        this.destination = v;
+                        this.requestId = v;
                     else {
-                        v = [line headerValueForName:@"request-id:"];
+                        v = [line headerValueForName:@"session:"];
                         if (v)
-                            this.requestId = v;
+                            this.sessionId = v;
                         else {
-                            v = [line headerValueForName:@"session:"];
+                            v = [line headerValueForName:@"message:"];
                             if (v)
-                                this.sessionId = v;
-                            else {
-                                v = [line headerValueForName:@"message:"];
-                                if (v)
-                                    this.message = v;
-                                else {
-                                    v = [line headerValueForName:@"Invalid session ID:"];
-                                    if (v) {
-                                        isid = v;
-                                        this.command = scInvalidSID;
-                                        *stop = YES;
-                                    } else
-                                        if ([line hasPrefix:@"RECEIPT"]) {// handling for simple messages
-                                            this.command = scRECEIPT;
-                                        } else
-                                            if ([line hasPrefix:@"CONNECTED"]) {
-                                                this.command = scCONNECTED;
-                                            } else
-                                                if ([line hasPrefix:@"ERROR"]) {
-                                                    this.command = scERROR;
-                                                } else
-                                                    if ([line hasPrefix:@"MESSAGE"])
-                                                        this.command = scMESSAGE;
-                                }
-                            }
+                                this.message = v;
                         }
                     }
                 }
             }
             if (v) collected++;
-            if (collected == 4) *stop = YES;
         }];
-        if (isid)
-            return self;
-        if (contentLength > 0) {
-            if (contentLength > [content length]) {
-                NSLog(@"Crab %d > %d", contentLength, [content length]);
-                return nil;
-            } else
-                self.jsonString = [content substringFromIndex:[content length] - contentLength];
-        }
+        NSLog(@"Start of frame: %@", content);
         if (self.command != scUNKNOWN) return self;
         if (collected < 2) {
             NSLog(@"insufficient headers list");
@@ -243,60 +210,26 @@
     return self;
 }
 
-+ (StompFrame *)feed:(void *)d Length:(NSUInteger)len {
++ (NSInteger) extractContentLength:(void *)d Length:(NSUInteger)len {
+    __block int contentLength = 0;
+    NSString *content = [[NSString alloc] initWithBytes:d length:MIN(1000, len) encoding:NSUTF8StringEncoding];
+    [content enumerateLinesUsingBlock:^(NSString *line, BOOL *stop) {
+        NSString *v = [line headerValueForName:@"content-length:"];
+        if (v) {
+            contentLength = [v intValue];
+            *stop = YES;
+        }
+    }];
+    return contentLength;
+}
+
++ (StompFrame *)feed:(void *)d ContentLength:(NSInteger)contentLength MaxLength:(NSUInteger)len {
     StompFrame *f = nil;
-    if (d) {
-        NSString *s = [[NSString alloc] initWithBytes:d length:len encoding:NSUTF8StringEncoding];
-        if (s)
-            if ([s hasPrefix:@"0010"]) {
-                NSString *xs = [NSString stringWithFormat:@"0x%@", [s substringWithRange:NSMakeRange(4, 8)], nil];
-                int seqnum = [xs hexValue];
-                xs = [NSString stringWithFormat:@"0x%@", [s substringWithRange:NSMakeRange(12, 8)], nil];
-                int length = [xs hexValue];
-                NSLog(@"seqnum = %d", seqnum);
-                if (length + 20 - 1 > len) {
-                    NSLog(@"incomplete stomp frame. Expected %d + 20. Got %d", length, len);
-                    return nil;
-                }
-                s = [s substringWithRange:NSMakeRange(20, /*length - 1*/[s length] - 20)];
-                f = [[StompFrame alloc] initWithSeqNum:seqnum Contents:s];
-                //NSLog(@"s = %@", s);
-            } else {
-                NSLog(@"%@", s);
-                NSLog(@" BAD CSP HEADER!!!!!!!");
-                //@throw [NSException exceptionWithName:@"bad csp header!" reason:s userInfo:nil];
-            }
-        
-    }
+    if (d)
+        f = [[StompFrame alloc] initWithSeqNum:0 FirstByte:d ByteCount:len ContentLength:contentLength];
     return f;    
 }
 
-
-@end
-
-
-
-@implementation StompCoder
-
-- (void) encodeValueOfObjCType:(const char *)type at:(const void *)addr {
-    NSLog(@"aa %s", type);
-}
-
-- (void) decodeArrayOfObjCType:(const char *)itemType count:(NSUInteger)count at:(void *)array {
-    NSLog(@"ab");
-}
-
-- (void) encodeDataObject:(NSData *)data {
-    NSLog(@"ac");
-}
-
-- (NSData *) decodeDataObject {
-    NSLog(@"ad");
-}
-
-- (NSInteger)versionForClassName:(NSString *)className {
-    return 1;
-}
 
 
 @end

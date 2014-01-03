@@ -19,7 +19,7 @@
 - (void) connectionFailed:(NSError *)error;
 - (void) connectionLost;
 - (void) gotFrame:(StompFrame *)f;
-- (void) requestCompleted:(NSString *)table Param:(NSString *) param Data:(NSString *) data;
+//- (void) requestCompleted:(NSString *)table Data:(NSString *) data;
 
 @end
 
@@ -41,9 +41,10 @@
 - (BOOL) connect:(NSString *)login Password:(NSString *)pwd;
 - (void) ping;
 - (void) send:(NSData *)data;
-- (void) close;
+- (void) disconnect;
 - (void) gotFrame:(StompFrame *)f;
-- (BOOL) scheduleSubscriptionRequest:(NSString *) table Param:(NSString *) param;//callBackMethod:(SEL) callback;
+- (BOOL) scheduleSubscriptionRequest:(NSString *) table Param:(NSString *) param Success:(StompSuccessBlock) successBlock Failure:(StompFailureBlock) failureBlock;//callBackMethod:(SEL) callback;
+- (void) unsubscribe:(NSString *) table Param:(NSString *) param;
 - (void) writerSuccededForReceipt:(NSString *)receipt;
 - (void) writerFailedForReceipt:(NSString *)receipt WithError:(NSError *)error;
 

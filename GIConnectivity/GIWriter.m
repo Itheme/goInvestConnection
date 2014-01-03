@@ -11,6 +11,7 @@
 #import "StompFrame.h"
 #import "AFHTTPRequestOperation.h"
 
+
 @implementation GIWriter
 
 @synthesize channel, client;
@@ -61,8 +62,13 @@
     [self genericSend: scSUBSCRIBE Receipt:receipt Destination:table Method:@"send" Selector:param];
 }
 
+- (void) sendUnsubscribe:(NSString *) table Param:(NSString *) param Receipt:(NSString *)receipt {
+    [self genericSend: scUNSUBSCRIBE Receipt:receipt Destination:table Method:@"send" Selector:param];
+}
+
+
 - (void) sendConnect:(NSString *)login Password:(NSString *)pwd {
-    NSMutableDictionary *headers = [self defaultHeaders:@"111"];
+    NSMutableDictionary *headers = [self defaultHeaders:@"connectRec"];
     [headers addEntriesFromDictionary:@{@"login" : login, @"channel" : self.channel.channelId, @"passcode" : pwd}];//, @"destination" : @"connect"}];
     StompFrame *f = [[StompFrame alloc] initWithCommand:scCONNECT Headers:headers];
     
@@ -88,6 +94,31 @@
     }];
     [ro start];
 //    [self.client enqueueHTTPRequestOperation:ro];
+
+}
+
+- (void) sendDisconnect {
+    NSMutableDictionary *headers = [self defaultHeaders:@"discRec"];
+    StompFrame *f = [[StompFrame alloc] initWithCommand:scDISCONNECT Headers:headers];
+    
+    NSURL *url = [NSURL URLWithString:[self.channel.status sessioned:@"send"] relativeToURL:self.channel.targetURL];
+	NSMutableURLRequest *request = [[NSMutableURLRequest alloc] initWithURL:url];
+    [request setHTTPMethod:@"POST"];
+    [request setValue:@"" forHTTPHeaderField:@"Accept-Encoding"];
+    
+    [request setValue:@"text/plain" forHTTPHeaderField:@"Content-Type"];
+    
+    [request setHTTPBody: [f makeBuffer]];
+    
+    //__block GIWriter *this = self;
+    AFHTTPRequestOperation *ro = [[AFHTTPRequestOperation alloc] initWithRequest:request];
+    [ro setCompletionBlockWithSuccess:^(AFHTTPRequestOperation *operation, id responseObject) {
+        NSString *res = [NSString stringWithCString:[operation.responseData bytes] encoding:NSUTF8StringEncoding];
+        NSLog(@"disconnect response: %@", res);
+    } failure:^(AFHTTPRequestOperation *operation, NSError *error) {
+        NSLog(@"an %@", error);
+    }];
+    [ro start];
 
 }
 

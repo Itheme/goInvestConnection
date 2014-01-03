@@ -13,29 +13,27 @@ typedef enum StompCommandsEnum {
     scUNKNOWN       =  0,
     scCONNECT       =  1,
     scCONNECTED     =  2,
-    scSEND          =  3,
-    scREQUEST       =  4,
-    scSUBSCRIBE     =  5,
-    scUNSUBSCRIBE   =  6,
-    scRECEIPT       =  7,
-    scREPLY         =  8,
-    scMESSAGE       =  9,
-    scERROR         = 10,
+    scDISCONNECT    =  3,
+    scSEND          =  4,
+    scREQUEST       =  5,
+    scSUBSCRIBE     =  6,
+    scUNSUBSCRIBE   =  7,
+    scRECEIPT       =  8,
+    scREPLY         =  9,
+    scMESSAGE       = 10,
+    scERROR         = 11,
+    scCLOSED        = 12,
     scInvalidSID    = 90
 } StompCommand;
 
 
-@interface StompCoder : NSCoder {
-    
-}
+@interface NSString (HexValue)
 
-- (void) encodeValueOfObjCType:(const char *)type at:(const void *)addr;
-- (void) decodeArrayOfObjCType:(const char *)itemType count:(NSUInteger)count at:(void *)array;
-- (void) encodeDataObject:(NSData *)data;
-- (NSData *) decodeDataObject;
-- (NSInteger)versionForClassName:(NSString *)className;
+-(int) hexValue;
+-(NSString *) headerValueForName:(NSString *) name;
 
 @end
+
 
 @interface StompFrame : NSObject {
 
@@ -48,13 +46,17 @@ typedef enum StompCommandsEnum {
 @property (nonatomic, readonly, retain) NSString *requestId;
 @property (nonatomic, readonly, retain) NSString *sessionId;
 @property (nonatomic, readonly, retain) NSString *message;
-@property (nonatomic, readonly, retain) NSString *jsonString;
+@property (nonatomic, readonly, retain) id jsonData;
 
 
 - (id) initWithCommand:(StompCommand) sc Headers:(NSDictionary *) h;
 - (void) addHeader:(id)value forKey:(id)key;
 - (NSData *)makeBuffer;
-+ (StompFrame *)feed:(void *)d Length:(NSUInteger)len;
++ (StompFrame *)feed:(void *)d ContentLength:(NSInteger)contentLength MaxLength:(NSUInteger)len;
 //+ (NSData *) frameDataWithCommand:(StompCommand) sc;
++ (NSInteger) extractContentLength:(void *)d Length:(NSUInteger)len;
 
 @end
+
+typedef void(^StompSuccessBlock)(StompFrame *f);
+typedef void(^StompFailureBlock)(NSString *errorMessage);
