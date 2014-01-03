@@ -17,6 +17,8 @@
 @required
 
 - (void) connectionFailed:(NSError *)error;
+- (void) gotFrame:(StompFrame *)f;
+- (void) requestCompleted:(NSString *)table Param:(NSString *) param Data:(NSString *) data;
 
 @end
 
@@ -31,13 +33,17 @@
 @property (nonatomic, readonly, getter = getClosed) BOOL closed;
 @property (nonatomic, readonly, retain) GIReader *reader;
 @property (nonatomic, readonly, retain) GIWriter *writer;
+@property (nonatomic, readonly, retain) NSString *sessionId;
 
 - (id) initWithURL:(NSURL *) URL Options:(id) optionsProvider Delegate:(id<ChannelDelegate>) master;
 
-- (BOOL) connect;
+- (BOOL) connect:(NSString *)login Password:(NSString *)pwd;
 - (void) ping;
 - (void) send:(NSData *)data;
 - (void) close;
 - (void) gotFrame:(StompFrame *)f;
+- (BOOL) scheduleSubscriptionRequest:(NSString *) table Param:(NSString *) param;//callBackMethod:(SEL) callback;
+- (void) writerSuccededForReceipt:(NSString *)receipt;
+- (void) writerFailedForReceipt:(NSString *)receipt WithError:(NSError *)error;
 
 @end

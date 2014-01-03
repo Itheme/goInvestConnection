@@ -15,8 +15,10 @@ typedef enum StompCommandsEnum {
     scCONNECTED = 2,
     scSEND = 3,
     scREQUEST = 4,
-    scRECEIPT = 5,
-    scREPLY = 6
+    scSUBSCRIBE = 5,
+    scUNSUBSCRIBE = 6,
+    scRECEIPT = 7,
+    scREPLY = 8
 } StompCommand;
 
 
@@ -41,6 +43,7 @@ typedef enum StompCommandsEnum {
 @property (nonatomic, readonly, retain) NSString *receipt;
 @property (nonatomic, readonly, retain) NSString *destination;
 @property (nonatomic, readonly, retain) NSString *requestId;
+@property (nonatomic, readonly, retain) NSString *sessionId;
 @property (nonatomic, readonly, retain) NSString *jsonString;
 
 - (id) initWithCommand:(StompCommand) sc Headers:(NSDictionary *) h;

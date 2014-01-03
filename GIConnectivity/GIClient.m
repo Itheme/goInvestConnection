@@ -35,9 +35,18 @@ static NSString *kKeyState = @"GIClientState";
 static NSString *kStatusMessage01 = @"Could not download marketplaces!";
 static NSString *kStatusMessage02 = @"Could not find MXZERNO in marketplaces!";
 static NSString *kStatusMessage03 = @"Channel failed to startup (%@)";
-static NSString *kStatusMessage04 = @"Could not download marketplaces!";
-static NSString *kStatusMessage05 = @"Could not download marketplaces!";
-static NSString *kStatusMessage06 = @"Could not download marketplaces!";
+static NSString *kStatusMessage04 = @"Failed to download marketplaces (error: %@, reply: %@)";
+static NSString *kStatusMessage05 = @"";
+static NSString *kStatusMessage06 = @"";
+static NSString *kStatusMessage07 = @"";
+static NSString *kStatusMessage08 = @"";
+static NSString *kStatusMessage09 = @"";
+static NSString *kStatusMessage10 = @"";
+static NSString *kStatusMessage11 = @"";
+static NSString *kStatusMessage12 = @"";
+static NSString *kStatusMessage13 = @"";
+static NSString *kStatusMessage14 = @"";
+static NSString *kStatusMessage15 = @"";
 
 
 - (id) initWithUser:(NSString *)alogin Pwd:(NSString *)apwd {
@@ -57,7 +66,7 @@ static NSString *kStatusMessage06 = @"Could not download marketplaces!";
                 self.channel.channelId = [mp valueForKey:@"channel"];
                 self.channel.caption = [mp valueForKey:@"caption"];
                 NSLog(@"ZERNO is on %@ channel called %@", self.channel.channelId, self.channel.caption);
-                if (![self.channel connect]) {
+                if (![self.channel connect:login Password:pwd]) {
                     self.lastStatusMessage = kStatusMessage01;
                     self.state = csDisconnectedWithProblem;
                 } else {
@@ -86,13 +95,36 @@ static NSString *kStatusMessage06 = @"Could not download marketplaces!";
             NSArray *marketPlaces = [JSON valueForKey:@"marketplaces"];
             [this marketLoaded:marketPlaces];
         } failure:^(NSURLRequest *request, NSHTTPURLResponse *response, NSError *error, id JSON) {
-            NSLog(@"%@ ", error);
-            NSLog(@"%@ ", JSON);
+            self.lastStatusMessage = [NSString stringWithFormat:kStatusMessage04, error, JSON, nil];
+            self.state = csDisconnectedWithProblem;
         }];
         operation.JSONReadingOptions |= NSJSONReadingMutableContainers | NSJSONReadingMutableLeaves | NSJSONReadingAllowFragments;
         [operation start];
 
     }
+}
+
+- (void) gotFrame:(StompFrame *)f {
+    switch (f.command) {
+        case scCONNECTED:
+            self.state = csConnected;
+            [self.channel.writer sendGetTickers:@"MXZERNO"];
+            [self.channel scheduleSubscriptionRequest:@"lasttrades" Param:nil];
+            break;
+        default:
+            break;
+    }
+}
+
+- (void) requestCompleted:(NSString *)table Param:(NSString *)param Data:(NSString *)data {
+    NSLog(@"Wow!");
+}
+
+- (void) setState:(GIClientState)astate {
+    if (state == astate) return;
+    state = astate;
+    substate = 0;
+    [self didChangeValueForKey:kKeyState];
 }
 
 @end

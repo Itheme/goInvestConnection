@@ -234,18 +234,5 @@ totalBytesExpectedToWrite:(NSInteger)totalBytesExpectedToWrite {
     
 }
 
-- (NSCachedURLResponse *)connection:(NSURLConnection *)connection willCacheResponse:(NSCachedURLResponse *)cachedResponse {
-    NSLog(@"ai");
-    
-}
-
-- (void)connectionDidFinishLoading:(NSURLConnection *)connection {
-    NSLog(@"aj");
-    
-}
-
-- (void)stream:(NSStream *)aStream handleEvent:(NSStreamEvent)eventCode {
-    NSLog(@"ec = %d", eventCode);
-}
 
 @end

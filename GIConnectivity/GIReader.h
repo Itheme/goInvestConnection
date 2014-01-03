@@ -10,7 +10,7 @@
 
 @class GIChannel;
 
-@interface GIReader : NSOutputStream <NSStreamDelegate, NSURLConnectionDelegate, NSURLConnectionDataDelegate> { // <NSURLConnectionDownloadDelegate, NSURLConnectionDataDelegate> {
+@interface GIReader : NSObject <NSStreamDelegate, NSURLConnectionDelegate, NSURLConnectionDataDelegate> { // <NSURLConnectionDownloadDelegate, NSURLConnectionDataDelegate> {
     
 }
 

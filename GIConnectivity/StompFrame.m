@@ -11,6 +11,7 @@
 @interface NSString (HexValue)
 
 -(int) hexValue;
+-(NSString *) headerValueForName:(NSString *) name;
 
 @end
 
@@ -23,6 +24,12 @@
     return n;
 }
 
+-(NSString *) headerValueForName:(NSString *) name {
+    if ([self hasPrefix:name])
+        return [self substringFromIndex:[name length]];
+    return nil;
+}
+
 @end
 @interface StompFrame () {
 }
@@ -32,6 +39,7 @@
 @property (nonatomic, retain) NSString *receipt;
 @property (nonatomic, retain) NSString *destination;
 @property (nonatomic, retain) NSString *requestId;
+@property (nonatomic, retain) NSString *sessionId;
 @property (nonatomic, retain) NSString *jsonString;
 
 @end
@@ -39,7 +47,7 @@
 @implementation StompFrame
 
 @synthesize headers;
-@synthesize seqnum, receipt, destination, requestId, jsonString;
+@synthesize seqnum, receipt, destination, requestId, sessionId, jsonString;
 @synthesize command;
 
 - (NSString *)encodedHeaders {
@@ -64,6 +72,12 @@
             break;
         case scREQUEST:
             res = @"REQUEST";
+            break;
+        case scSUBSCRIBE:
+            res = @"SUBSCRIBE";
+            break;
+        case scUNSUBSCRIBE:
+            res = @"UNSUBSCRIBE";
             break;
         default:
             return nil;
@@ -113,12 +127,17 @@
                     if (r.location == NSNotFound) {
                         r = [line rangeOfString:@"request-id:"];
                         if (r.location == NSNotFound) {
-                            if ([line hasPrefix:@"RECEIPT"]) {// handling for simple messages
-                                this.command = scRECEIPT;
-                            } else
-                                if ([line hasPrefix:@"CONNECTED"]) {
-                                    this.command = scCONNECTED;
-                                }
+                            r = [line rangeOfString:@"session:"];
+                            if (r.location == NSNotFound) {
+                                if ([line hasPrefix:@"RECEIPT"]) {// handling for simple messages
+                                    this.command = scRECEIPT;
+                                } else
+                                    if ([line hasPrefix:@"CONNECTED"]) {
+                                        this.command = scCONNECTED;
+                                    }
+                            } else {
+                                this.sessionId = [line substringFromIndex:NSMaxRange(r)];
+                            }
                         } else {
                             this.requestId = [line substringFromIndex:NSMaxRange(r)];
                             collected++;
