@@ -40,27 +40,48 @@
     }
 }
 
+- (void) cfStreamRun:(NSURL *)url {
+    CFURLRef cfURL = (__bridge CFURLRef)url;
+    CFHTTPMessageRef httpMessageRef = CFHTTPMessageCreateRequest(NULL, CFSTR("GET"), cfURL, kCFHTTPVersion1_0);
+    CFReadStreamRef stream = CFReadStreamCreateForHTTPRequest(CFAllocatorGetDefault(), httpMessageRef);
+    if (!CFReadStreamOpen(stream)) {
+        CFStreamError myErr = CFReadStreamGetError(stream);
+        if (myErr.domain == kCFStreamErrorDomainPOSIX) {
+            // Interpret myErr.error as a UNIX errno.
+        } else if (myErr.domain == kCFStreamErrorDomainMacOSStatus) {
+            // Interpret myErr.error as a MacOS error code.
+            OSStatus macError = (OSStatus)myErr.error;
+            // Check other error domains.
+        }
+    } else {
+        CFIndex numBytesRead;
+        do {
+            UInt8 buf[10240]; // define myReadBufferSize as desired
+            numBytesRead = CFReadStreamRead(stream, buf, sizeof(buf));
+            if( numBytesRead > 0 ) {
+                //handleBytes(buf, numBytesRead);
+                [self write:buf maxLength:numBytesRead];
+            } else if( numBytesRead < 0 ) {
+                CFStreamError error = CFReadStreamGetError(stream);
+                //reportError(error);
+            }
+        } while( numBytesRead > 0 );
+        [self performSelectorOnMainThread:@selector(doHang) withObject:nil waitUntilDone:NO];        
+    }
+}
+
 - (void) hang {
-    
-    //[theRequest setHTTPBodyStream:]
-    // create the connection with the request
-    // and start loading the data
     closed = NO;
     NSURL *url = [NSURL URLWithString:[channel.status sessioned:@"receive"] relativeToURL:self.channel.targetURL];
-    /*NSInputStream *istr = [[NSInputStream alloc] init];//[[NSInputStream alloc] initWithURL:url];
-    [istr setProperty:<#(id)#> forKey:<#(NSString *)#>
-    [self performSelectorInBackground:@selector(loadistr:) withObject:istr];
-    return;*/
-    
-    theRequest = [NSMutableURLRequest requestWithURL:url
+    /*theRequest = [NSMutableURLRequest requestWithURL:url
                                          cachePolicy:NSURLRequestReloadIgnoringCacheData
-                                     timeoutInterval:20.0];
+                                     timeoutInterval:30.0];
     [theRequest setHTTPMethod:@"GET"];
-    //[theRequest setAllHTTPHeaderFields:@{ : @"0"}];//, @"Accept-Encoding" : @"gzip"}];
     [theRequest setValue:@"" forHTTPHeaderField:@"Accept-Encoding"];
     [theRequest setValue:[NSString stringWithFormat:@"%d", seqnum, nil] forHTTPHeaderField:@"X-CspHub-Seqnum"];
-    [theRequest setHTTPShouldUsePipelining:YES];
-    //[theRequest setNetworkServiceType:NSURLNetworkServiceTypeVoIP];
+    [theRequest setHTTPShouldUsePipelining:YES];*/
+    [self performSelectorInBackground:@selector(cfStreamRun:) withObject:url];
+    return;
     self.readerOperation = [[AFURLConnectionOperation alloc] initWithRequest:theRequest];
     self.readerOperation.outputStream.delegate = self;
     /*[readerOperation setDownloadProgressBlock:^(NSUInteger bytesRead, long long totalBytesRead, long long totalBytesExpectedToRead) {
@@ -121,11 +142,16 @@
 }
 
 
+- (void) doHang {
+    [self performSelector:@selector(hang) withObject:nil afterDelay:1.0];
+}
+
 - (void) close {
     if (closed) return;
     closed = YES;
     //NSLog(@"reopening");
-    [self performSelector:@selector(hang) withObject:nil afterDelay:5.0];
+    //[self performSelector:@selector(hang) withObject:nil afterDelay:5.0];
+    [self performSelectorOnMainThread:@selector(doHang) withObject:nil waitUntilDone:NO];
 }
 
 // stream methods
@@ -141,15 +167,16 @@
     memcpy(accData + used, buffer, len);
     used += len;
     int i0 = 0;
-    //NSString *s = [NSString stringWithCString:(const char *)buffer encoding:NSUTF8StringEncoding];
-    //NSLog(@"written: %@", s);
+    NSString *s = [NSString stringWithCString:(const char *)buffer encoding:NSUTF8StringEncoding];
+    NSLog(@"written: %@", s);
     for (int i = i0; i < used; i++)
         if (accData[i] == 0) {
             StompFrame *f = [StompFrame feed:&(accData[i0]) Length:i - i0];
             if (f) {
                 i0 = i + 1;
+                [self.channel gotFrame:f];
                 seqnum = f.seqnum;
-            } else
+            }
         }
     if (i0 > 0) {
         used -= i0;

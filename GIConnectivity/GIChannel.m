@@ -18,6 +18,7 @@
 @property (nonatomic, retain) GIChannelStatus *status;
 @property (nonatomic, retain) GIReader *reader;
 @property (nonatomic, retain) GIWriter *writer;
+@property (nonatomic, assign) id<ChannelDelegate> delegate;
 
 @end
 
@@ -25,12 +26,14 @@
     
 }
 
-@synthesize status, targetURL, closed, reader, writer, channelId;
+@synthesize status, targetURL, closed, reader, writer, channelId, caption;
+@synthesize delegate;
 
-- (id) initWithURL:(NSURL *)URL Options:(id)optionsProvider {
+- (id) initWithURL:(NSURL *)URL Options:(id)optionsProvider Delegate:(id<ChannelDelegate>) master {
     self = [super init];
     if (self) {
         targetURL = URL;
+        self.delegate = master;
     }
     return self;
 }
@@ -39,8 +42,8 @@
     return self.status == NULL;
 }
 
-- (void) connect {
-    if (!self.closed) return;
+- (BOOL) connect {
+    if (!self.closed) return NO;
     status = nil;
     NSURL *url = [NSURL URLWithString:@"connect" relativeToURL:targetURL];
     NSURLRequest *request = [NSURLRequest requestWithURL:url];
@@ -51,15 +54,19 @@
         this.status = [[GIChannelStatus alloc] initWithResponse:operation.response];
         NSLog(@"Starting reader...");
         this.reader = [[GIReader alloc] initWithChannel:this];
-        //[NSThread sleepForTimeInterval:5.0];
         NSLog(@"Starting writer...");
         this.writer = [[GIWriter alloc] initWithChannel:this];
         [self performSelector:@selector(ping) withObject:nil afterDelay:this.status.delay / 1000.0];
     } failure:^(AFHTTPRequestOperation *operation, NSError *error) {
-        NSLog(@"Connection failed... %@", error);
         this.status = NULL;
+        [this.delegate connectionFailed:error];
     }];
     [connectionOp start];
+    return YES;
+}
+
+- (void) doPing {
+    [self performSelector:@selector(ping) withObject:nil afterDelay:self.status.delay / 1000.0];
 }
 
 - (void) ping {
@@ -75,11 +82,13 @@
         if ([operation isCancelled]) {
             return;
         }
-        if (operation.error)
+        if (operation.error) {
+            NSLog(@"ping fail: %@", operation.error.description);
             return;
+        }
         [this.status touch];
         NSLog(@"pinged");
-        [self performSelector:@selector(ping) withObject:nil afterDelay:this.status.delay / 1000.0];
+        [this performSelectorOnMainThread:@selector(doPing) withObject:nil waitUntilDone:NO];
     };
 #pragma clang diagnostic pop
     [operation start];
@@ -91,7 +100,6 @@
     NSURLRequest *request = [NSURLRequest requestWithURL:url];
     
 }
-
 
 - (void) close {
     NSURL *url = [NSURL URLWithString:[status sessioned:@"disconnect"] relativeToURL:targetURL];
@@ -112,6 +120,17 @@
     };
 #pragma clang diagnostic pop
     [operation start];
+}
+
+- (void) gotFrame:(StompFrame *)f {
+    switch (f.command) {
+        case scCONNECTED:
+            [writer sendGetTickers];
+            break;
+            
+        default:
+            break;
+    }
 }
 
 @end

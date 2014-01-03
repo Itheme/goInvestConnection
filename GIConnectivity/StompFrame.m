@@ -183,10 +183,11 @@
                 NSLog(@"seqnum = %d", seqnum);
                 s = [s substringWithRange:NSMakeRange(20, length - 1)];
                 f = [[StompFrame alloc] initWithSeqNum:seqnum Contents:s];
-                NSLog(@"s = %@", s);
+                //NSLog(@"s = %@", s);
             } else {
                 NSLog(@"%@", s);
-                @throw [NSException exceptionWithName:@"bad csp header!" reason:s userInfo:nil];
+                NSLog(@" BAD CSP HEADER!!!!!!!");
+                //@throw [NSException exceptionWithName:@"bad csp header!" reason:s userInfo:nil];
             }
         
     }
