@@ -39,9 +39,10 @@
 - (id) initWithURL:(NSURL *) URL Options:(id) optionsProvider Delegate:(id<ChannelDelegate>) master;
 
 - (BOOL) connect:(NSString *)login Password:(NSString *)pwd;
-- (void) ping;
-- (void) send:(NSData *)data;
+//- (void) ping;
+//- (void) send:(NSData *)data;
 - (void) disconnect;
+- (void) disconnectCSP; // in case of imminent termination
 - (void) gotFrame:(StompFrame *)f;
 - (BOOL) scheduleSubscriptionRequest:(NSString *) table Param:(NSString *) param Success:(StompSuccessBlock) successBlock Failure:(StompFailureBlock) failureBlock;//callBackMethod:(SEL) callback;
 - (void) unsubscribe:(NSString *) table Param:(NSString *) param;

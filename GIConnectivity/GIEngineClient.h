@@ -7,11 +7,22 @@
 //
 
 #import "GIClient.h"
+#import "GIMinisession.h"
 
+@protocol OrderQueueDelegate
+
+
+@end
 
 @interface GIEngineClient : GIClient
 
+
+@property (nonatomic, retain, setter = setTarget:) GIMinisession *target;
+@property (nonatomic) id<OrderQueueDelegate> targetSubscriber;
+
 + (GIEngineClient *) sharedClient;
 + (GIEngineClient *) setupSharedClient;
+
+- (void) setupOQDelegatesFor:(UITableView *)table;
 
 @end

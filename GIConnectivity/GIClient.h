@@ -20,9 +20,12 @@ typedef enum GIClientStateEnum {
     csPseudoConnect = 5 // connection emulation using cache
 } GIClientState;
 
+static NSString *kDefaultSubscriptionParam = @"marketplace=MXZERNO";
+
 @interface GIClient : NSObject <ChannelDelegate>
 
 @property (nonatomic, readonly) GIClientState state;
+@property (nonatomic, readonly, retain) GIChannel *channel;
 @property (nonatomic, readonly) int substate;
 @property (nonatomic, readonly, retain) NSString *lastStatusMessage;
 @property (nonatomic, readonly, retain) NSDictionary *minisessions;

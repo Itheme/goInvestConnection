@@ -12,9 +12,11 @@
 #import "AFURLConnectionOperation.h"
 
 enum CspFrameParseResult {
-    prNotAFrame = 0,
-    prIncompleteFrame = -1,
-    prBadSeqNum = -2
+    prNotAFrame = -1,
+    prIncompleteFrame = -2,
+    prBadSeqNum = -3,
+    prSessionClosed = -4,
+    prInvalidSID = -5
 };
 
 @interface GIReader () {
@@ -39,6 +41,8 @@ enum CspFrameParseResult {
 //@synthesize accumulator;
 
 static char cspHeader[] = {'0', '0', '1', '0'};
+static char cspClosed[] = "Session closed";//{'S', 'e', 's', 's', 'i', 'o', 'n', ' ', 'c', 'l', 'o', 's', 'e', 'd'};
+static char cspInvSID[] = "Invalid session ID";//{'S', 'e', 's', 's', 'i', 'o', 'n', ' ', 'c', 'l', 'o', 's', 'e', 'd'};
 
 
 - (void) loadistr:(id) iistr {
@@ -139,6 +143,7 @@ static char cspHeader[] = {'0', '0', '1', '0'};
 - (void) close {
     if (closed) return;
     closed = YES;
+    [channel disconnectCSP];
     CFRelease(httpMessageRef);
 }
 
@@ -196,14 +201,45 @@ static char cspHeader[] = {'0', '0', '1', '0'};
             char *x = (char *)(buffer + 4);
             sscanf(x, "%8x%8x", &aseqnum, &length);
             if ((aseqnum >= seqnum - 20) && (aseqnum < seqnum + 20)) {
-                if (length + kTOTALCSPHLEN - 1 > len)
+                if (length + kTOTALCSPHLEN - 1 > len) {
+                    NSLog(@"inc. frame (seqnum = %d)", aseqnum);
                     return prIncompleteFrame;
+                }
                 NSLog(@"seqnum = %d", aseqnum);
                 seqnum = aseqnum;
                 return length;
-            } else
+            } else {
+                NSLog(@"f");
                 return prBadSeqNum;
+            }
+        } else {
+            if (memcmp(cspClosed, buffer, 14) == 0)
+                return prSessionClosed;
+            if (memcmp(cspInvSID, buffer, 18) == 0)
+                return prInvalidSID;
         }
+            //if ((*buffer == '0') && (*(buffer+1) == '0') && (*(buffer+2) == '1') && (*(buffer+3) == '0')) {
+            //    @throw @"DAFAQUE!!!";
+            //}
+            /*if (*buffer == '0') { // could be unicode crap happening
+                NSString *s = [[NSString alloc] initWithBytes:buffer length:len encoding:NSUTF8StringEncoding];
+                if ([s hasPrefix:@"0010"]) {
+                    NSString *xs = [s substringWithRange:NSMakeRange(4, 8)];
+                    int aseqnum = [xs hexValue];
+                    if ((aseqnum >= seqnum - 20) && (aseqnum < seqnum + 20)) {
+                        xs = [s substringWithRange:NSMakeRange(12, 8)];
+                        int length = [xs hexValue];
+                        if (length + 20 - 1 > len) {
+                            //NSLog(@"incomplete csp frame. Expected %d + 20. Got %d", length, rused);
+                            return prIncompleteFrame;
+                        }
+                        NSLog(@"seqnum = %d", aseqnum);
+                        seqnum = aseqnum;
+                        return length;
+                    } else
+                        return prBadSeqNum;
+                }
+            }*/
     } else {
         NSLog(@"ding!");
         return prIncompleteFrame;
@@ -240,28 +276,7 @@ static char cspHeader[] = {'0', '0', '1', '0'};
     return maxLen;
 }
 
-// stream methods
-
-- (NSInteger)write:(const uint8_t *)buffer maxLength:(NSUInteger)len {
-    if (len == 0) return 0;
-    int res = [self bufferHasStompFrame:buffer maxLength:len];
-    if (rused > 0) {
-        if (res == prIncompleteFrame)
-            @throw [NSException exceptionWithName:@"CSP layer exception" reason:@"Got two incomplete CSP frames in a row!" userInfo:nil];
-        if (res != prBadSeqNum) // assuming just misstaken header match
-            if (res != prNotAFrame)
-                return [self writeKnownBuffer:buffer cspLength:res maxLength:len];
-        // else adding to rawAccData
-    } else {
-        if (res == prNotAFrame) {
-            NSLog(@"whole lot of problems: %@", [[NSString alloc] initWithBytes:rawAccData length:rused encoding:NSUTF8StringEncoding]);
-            @throw [NSException exceptionWithName:@"Wrong prefix in csp protocol" reason:@"Wrong prefix in csp protocol" userInfo:nil];
-        }
-        if (res == prBadSeqNum)
-            @throw [NSException exceptionWithName:@"CSP layer exception" reason:@"Got bad seqnum!" userInfo:nil];
-        if (res != prIncompleteFrame)
-            return [self writeKnownBuffer:buffer cspLength:res maxLength:len];
-    }
+- (NSInteger) addBufferToRawAccData:(const uint8_t *)buffer maxLength:(NSUInteger)len {
     while (rused + len > rcapacity) {
         rcapacity *= 2;
         void *temp = malloc(rcapacity);
@@ -271,23 +286,59 @@ static char cspHeader[] = {'0', '0', '1', '0'};
     }
     memcpy(rawAccData + rused, buffer, len);
     rused += len;
+    return len;
+}
+
+// stream methods
+
+- (NSInteger)write:(const uint8_t *)buffer maxLength:(NSUInteger)len {
+    if (len == 0) return 0;
+    if (self.closed) return 0;
+    NSString *s = [[NSString alloc] initWithBytes:buffer length:len encoding:NSUTF8StringEncoding];
+    NSLog(@"rused: %d, written: "/*%@"*/, rused);//, s);
+    if (rused == 0) {
+        int res = [self bufferHasStompFrame:buffer maxLength:len];
+        if (res > 0) {
+            char *ptr = (char *)buffer;
+            ptr += kTOTALCSPHLEN;
+            [self writeGluedData:(char *)ptr Length:res];
+            ptr += res;
+            res += kTOTALCSPHLEN;
+            if (res < len) {
+                NSLog(@"Rewriting");
+                return res + [self write:(uint8_t *)ptr maxLength:len - res];
+            }
+            return len;
+        }
+    }
+    [self addBufferToRawAccData:buffer maxLength:len];
     char *ptr = rawAccData;
-    while (rused > kTOTALCSPHLEN) {
+    while (rused > 0) {
         int res = [self bufferHasStompFrame:(uint8_t *)ptr maxLength:rused];
-        if ((res == prNotAFrame) || (res == prBadSeqNum))
-            @throw [NSException exceptionWithName:@"CSP layer exception" reason:@"WTF!?" userInfo:nil];
-        if (res == prIncompleteFrame) break;
-        ptr += kTOTALCSPHLEN;
-        [self writeGluedData:ptr Length:res];
-        rused -= res + kTOTALCSPHLEN;
-        ptr += res;
+        switch (res) {
+            case prIncompleteFrame:
+                if (rawAccData != ptr)
+                    memcpy(rawAccData, ptr, rused);
+                return len;
+            case prNotAFrame:
+                NSLog(@"whole lot of problems: %@", [[NSString alloc] initWithBytes:buffer length:len encoding:NSUTF8StringEncoding]);
+                @throw [NSException exceptionWithName:@"Wrong prefix in csp protocol" reason:@"Wrong prefix in csp protocol" userInfo:nil];
+            case prBadSeqNum:
+                @throw [NSException exceptionWithName:@"CSP layer exception" reason:@"Got bad seqnum!" userInfo:nil];
+            case prSessionClosed:
+            case prInvalidSID:
+                [self close];
+#warning Release VCs on closing!
+                return 0;
+            default:
+                ptr += kTOTALCSPHLEN;
+                [self writeGluedData:ptr Length:res];
+                rused -= res + kTOTALCSPHLEN;
+                ptr += res;
+                break;
+        }
     }
-    if (rused > 0) {
-        memcpy(rawAccData, ptr, rused);
-    }
-    
-    NSString *s = [NSString stringWithCString:(const char *)buffer encoding:NSUTF8StringEncoding];
-    NSLog(@"written: %@", s);
+    //NSString *s = [NSString stringWithCString:(const char *)buffer encoding:NSUTF8StringEncoding];
     return len;
 }
 

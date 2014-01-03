@@ -47,6 +47,8 @@
 @synthesize seqnum, receipt, destination, requestId, sessionId, message, subscription, jsonData;
 @synthesize command;
 
+static char contentLengthHeader[] = "content-length:";
+
 - (NSString *)encodedHeaders {
     __block NSString *l = [headers valueForKey:@"content-length"];
     __block NSString *res = l;
@@ -216,14 +218,24 @@
 
 + (NSInteger) extractContentLength:(void *)d Length:(NSUInteger)len {
     __block int contentLength = 0;
-    NSString *content = [[NSString alloc] initWithBytes:d length:MIN(1000, len) encoding:NSUTF8StringEncoding];
+    char *c = d;
+    for (int i = len; i--; c++)
+        if (*c == 'c') {
+            if (memcmp(c, contentLengthHeader, 15) == 0) {
+                c += 15;
+                int cl = 0;
+                sscanf(c, "%d", &cl);
+                return cl;
+            }
+        }
+    /*NSString *content = [[NSString alloc] initWithBytes:d length:MIN(1000, len) encoding:NSUTF8StringEncoding];
     [content enumerateLinesUsingBlock:^(NSString *line, BOOL *stop) {
         NSString *v = [line headerValueForName:@"content-length:"];
         if (v) {
             contentLength = [v intValue];
             *stop = YES;
         }
-    }];
+    }];*/
     return contentLength;
 }
 

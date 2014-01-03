@@ -36,8 +36,8 @@ CFAbsoluteTime CFAbsoluteTimeGetMedvedev() {
 
 @implementation GIMinisession
 
-@synthesize longId, shortId, caption, times, instrid;
-@synthesize status;
+@synthesize longId, shortId, caption, times, instrid, secName, notes, sectorName;
+@synthesize status, tradingStatus;
 @synthesize startTime;
 @synthesize timeTillRun, timeTillStop, percentDone;
 @synthesize scheduleString;
@@ -184,6 +184,10 @@ CFAbsoluteTime CFAbsoluteTimeGetMedvedev() {
     if (startTime > s.startTime - 0.9)
         return 0;
     return -1;
+}
+
+- (NSString *) subscriptionParams {
+    return [NSString stringWithFormat:@"ticker='%@'", self.longId, nil];
 }
 
 @end

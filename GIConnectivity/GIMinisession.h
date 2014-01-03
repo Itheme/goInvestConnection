@@ -16,6 +16,15 @@ typedef enum GIMinisessionStatusEnum {
     msEnded = 4
 } GIMinisessionStatus;
 
+typedef enum GIMinisessionTradingStatusEnum {
+    tsNA = 0,
+    tsOpening = 1,
+    tsCanceled = 2,
+    tsClosing = 3,
+    tsBreak = 4,
+    tsTrading = 5
+} GIMinisessionTradingStatus;
+
 static NSString *reuseIdUnknown = @"bad session state";
 static NSString *reuseIdWaiting = @"waiting for ms";
 static NSString *reuseIdStartingSoon = @"session starting soon";
@@ -28,6 +37,12 @@ static NSString *kSessionStatusKey = @"status";
 @property (nonatomic, readonly, retain) NSString *longId;
 @property (nonatomic, readonly, retain) NSString *shortId;
 @property (nonatomic, readonly, retain) NSString *caption;
+@property (nonatomic, retain) NSString *secName;
+@property (nonatomic, retain) NSString *notes;
+@property (nonatomic, retain) NSString *sectorName;
+@property (nonatomic) BOOL buy;
+@property (nonatomic) GIMinisessionTradingStatus tradingStatus;
+
 @property (nonatomic, readonly, getter = getScheduleString) NSString *scheduleString;
 @property (nonatomic, retain) NSString *instrid;
 @property (nonatomic, readonly, retain) NSMutableDictionary *times;
@@ -40,6 +55,7 @@ static NSString *kSessionStatusKey = @"status";
 - (void) setEvent:(NSString *)event EventStatus:(NSString *)eventStatus AtTime:(NSString *)timeStr;
 - (BOOL) hasNextUIRefreshTime:(CFAbsoluteTime *)t;
 - (NSString *) reuseId;
+- (NSString *) subscriptionParams;
 - (NSComparisonResult) comareWith:(GIMinisession *)s;
 
 @end

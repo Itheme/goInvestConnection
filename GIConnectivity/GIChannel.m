@@ -19,9 +19,10 @@
 @property (copy) StompSuccessBlock success;
 @property (copy) StompFailureBlock failure;
 @property (nonatomic, retain) NSString *param;
+@property (nonatomic, retain) NSString *receipt;
 @property (nonatomic, retain) NSString *subscriptionId;
 
-- (id) initWithParam:(NSString *) p Success:(StompSuccessBlock) successBlock Failure:(StompFailureBlock) failureBlock;
+- (id) initWithParam:(NSString *) p Success:(StompSuccessBlock) successBlock Failure:(StompFailureBlock) failureBlock receipt:(NSString *)rec;
 - (void) touch;
 
 @end
@@ -39,13 +40,14 @@
 @property (nonatomic, retain) NSMutableDictionary *subscriptions;
 @property (nonatomic, retain) id<ChannelDelegate> clie;
 
+@property (nonatomic, retain) NSTimer *pingTimer;
 @end
 
 @implementation GIChannel {
     
 }
 
-@synthesize status, targetURL, closed, reader, writer, channelId, sessionId, caption;
+@synthesize status, targetURL, closed, reader, writer, channelId, sessionId, caption, pingTimer;
 @synthesize clie, pendingRequests, subscriptions;
 
 - (id) initWithURL:(NSURL *)URL Options:(id)optionsProvider Delegate:(id<ChannelDelegate>) master {
@@ -61,6 +63,15 @@
 
 - (BOOL) getClosed {
     return self.status == NULL;
+}
+
+- (void) startPingThread {
+    [self stopPingThread];
+    self.pingTimer = [NSTimer scheduledTimerWithTimeInterval:status.delay target:self selector:@selector(ping:) userInfo:nil repeats:YES];
+}
+
+- (void) stopPingThread {
+    [self.pingTimer invalidate];
 }
 
 - (BOOL) connect:(NSString *)login Password:(NSString *)pwd {
@@ -80,7 +91,7 @@
         NSLog(@"Starting writer...");
         this.writer = [[GIWriter alloc] initWithChannel:this];
         [this.writer sendConnect:lgn Password:pw];
-        [self performSelector:@selector(ping) withObject:nil afterDelay:this.status.delay];
+        [this startPingThread];
     } failure:^(AFHTTPRequestOperation *operation, NSError *error) {
         this.status = NULL;
         [this.clie connectionFailed:error];
@@ -89,12 +100,10 @@
     return YES;
 }
 
-- (void) doPing {
-    [self performSelector:@selector(ping) withObject:nil afterDelay:self.status.delay];
-}
-
-- (void) ping {
+- (void) ping:(id) userInfo {
     if (self.closed) return;
+#warning we should kill undone requests here probably
+    
 #warning maybe here should be some kind of a block
     NSURL *url = [NSURL URLWithString:[status sessioned:@"ping"] relativeToURL:targetURL];
     NSURLRequest *request = [NSURLRequest requestWithURL:url];
@@ -112,20 +121,19 @@
         }
         [this.status touch];
         NSLog(@"pinged");
-        [this performSelectorOnMainThread:@selector(doPing) withObject:nil waitUntilDone:NO];
     };
 #pragma clang diagnostic pop
     [operation start];
 }
 
-- (void) send:(NSData *)data {
-    /*if (self.closed) return;
+/*- (void) send:(NSData *)data {
+    if (self.closed) return;
     NSURL *url = [NSURL URLWithString:[status sessioned:@"send"] relativeToURL:targetURL];
-    NSURLRequest *request = [NSURLRequest requestWithURL:url];*/
-    
-}
+    NSURLRequest *request = [NSURLRequest requestWithURL:url];
+}*/
 
 - (void) disconnectCSP {
+    [self stopPingThread];
     NSURL *url = [NSURL URLWithString:[status sessioned:@"disconnect"] relativeToURL:targetURL];
     NSURLRequest *request = [NSURLRequest requestWithURL:url];
     __block AFURLConnectionOperation *operation = [[AFURLConnectionOperation alloc] initWithRequest:request];
@@ -200,9 +208,10 @@
     if (self.closed) return NO;
     FrameRequest *fr = nil;
     //if (successBlock || failureBlock)
-    fr = [[FrameRequest alloc] initWithParam:param Success:successBlock Failure:failureBlock];
+    NSString *rec = [self generateSubsReceipt];
+    fr = [[FrameRequest alloc] initWithParam:param Success:successBlock Failure:failureBlock receipt:rec];
     fr.subscriptionId = [self addPendingSubsRequest:fr Table:table];
-    [self.writer sendSubscribe:table Param:param Receipt:[self generateSubsReceipt] SubscriptionId:fr.subscriptionId];
+    [self.writer sendSubscribe:table Param:param Receipt:rec SubscriptionId:fr.subscriptionId];
     return YES;
 }
 
@@ -260,42 +269,67 @@
     if (f.sessionId) {
         self.sessionId = f.sessionId;
     }
-    if (f.destination) {
-        NSMutableDictionary *d = [self.pendingRequests valueForKey:f.destination];
-        if (d) {
-            if (f.receipt) {
-                FrameRequest *frq = [d valueForKey:f.receipt];
-                if (f.command == scRECEIPT) {
-                    NSLog(@"Skipping receipt %@", f.receipt);
-                    [frq touch];
-                    return;
+    if ((f.command == scERROR) || (f.command == scGenericError)) {
+        //__block NSString *rec = f.receipt;
+        __block GIChannel *this = self;
+        __block NSString *subsId = nil;
+        [self.subscriptions enumerateKeysAndObjectsUsingBlock:^(id key, id obj, BOOL *stop) {
+            NSMutableDictionary *d = obj;
+            [d enumerateKeysAndObjectsUsingBlock:^(id key, id obj, BOOL *stop) {
+                FrameRequest *frq = obj;
+                if ([frq.receipt isEqualToString:f.receipt]) {
+                    if (frq.failure)
+                        frq.failure(f.message);
+                    subsId = key;// is equal to frq.subscriptionId;
+                    *stop = YES;
                 }
+            }];
+            if (subsId) {
+                *stop = YES;
+                [d setValue:nil forKey:subsId];
             }
-#warning ticker subscription here too!
-            int c = [d count];
-            if (c > 1)
-                NSLog(@"Skipping message %@ (r1)", f.receipt);
-            else
-                if (c == 1) {
-                    FrameRequest *frq = [[d allValues] lastObject];
-                    [frq touch];
+        }];
+        if (subsId)
+            return;
+    }
+    NSMutableDictionary *d = [self.pendingRequests valueForKey:f.destination];
+    if (d) {
+        if (f.receipt) {
+            FrameRequest *frq = [d valueForKey:f.receipt];
+            if (f.command == scRECEIPT) {
+                NSLog(@"Skipping receipt %@", f.receipt);
+                [frq touch];
+                return;
+            }
+        }
+    #warning ticker subscription here too!
+        int c = [d count];
+        if (c > 1)
+            NSLog(@"Skipping message %@ (r1)", f.receipt);
+        else
+            if (c == 1) {
+                FrameRequest *frq = [[d allValues] lastObject];
+                [frq touch];
+                if ((f.command == scERROR) || (f.command == scGenericError)) {
+                    if (frq.failure)
+                        frq.failure(f.message);
+                } else
                     if (frq.success)
                         frq.success(f);
-#warning other types too!
-                } else
-                    NSLog(@"Skipping message %@ (r2)", f.receipt);
+    #warning other types too!
+            } else
+                NSLog(@"Skipping message %@ (r2)", f.receipt);
             return;
         }
-        d = [self.subscriptions valueForKey:f.destination];
-        if (d) {
-            if (f.subscription) {
-                FrameRequest *frq = [d valueForKey:f.subscription];
-                if (f.command == scMESSAGE) {
-                    [frq touch];
-                    if (frq.success)
-                        frq.success(f);
-                    return;
-                }
+    d = [self.subscriptions valueForKey:f.destination];
+    if (d) {
+        if (f.subscription) {
+            FrameRequest *frq = [d valueForKey:f.subscription];
+            if (f.command == scMESSAGE) {
+                [frq touch];
+                if (frq.success)
+                    frq.success(f);
+                return;
             }
         }
     }
@@ -314,14 +348,15 @@
 
 @implementation FrameRequest
 
-@synthesize param, success, failure, subscriptionId;
+@synthesize param, success, failure, subscriptionId, receipt;
 
-- (id) initWithParam:(NSString *) p Success:(StompSuccessBlock) successBlock Failure:(StompFailureBlock) failureBlock {
+- (id) initWithParam:(NSString *) p Success:(StompSuccessBlock) successBlock Failure:(StompFailureBlock) failureBlock receipt:(NSString *)rec {
     self = [super init];
     if (self) {
         self.param = p;
         self.success = successBlock;
         self.failure = failureBlock;
+        self.receipt = rec;
         [self touch];
     }
     return self;
