@@ -54,7 +54,7 @@ static NSString *kStatusMessage05 = @"Connection is lost";
 static NSString *kStatusMessage06 = @"Could not get minisessions' info (%@)";
 static NSString *kStatusMessage07 = @"Could not get systime (%@)";
 static NSString *kStatusMessage08 = @"Could not get tradetimes (%@)";
-static NSString *kStatusMessage09 = @"";
+static NSString *kStatusMessage09 = @"Could not acquire system log (%@)";
 static NSString *kStatusMessage10 = @"";
 static NSString *kStatusMessage11 = @"";
 static NSString *kStatusMessage12 = @"";
@@ -208,44 +208,49 @@ static NSString *kStatusMessage15 = @"";
         }
         NSDictionary *secInfos = [self extractSecInfos];
         if (secInfos) {
-            NSArray *columns = [secInfos valueForKey:@"columns"];
-            NSUInteger tTickerIndex = [columns indexOfObject:@"TICKER"];
-            NSUInteger tTradingStatusIndex = [columns indexOfObject:@"TRADINGSTATUS"];
-            NSUInteger tSessionStateIndex = [columns indexOfObject:@"SESSIONSTATE"];
-            NSUInteger tAuctionTypeIndex = [columns indexOfObject:@"AUCTIONTYPE"];
-            NSUInteger tSectorNameIndex = [columns indexOfObject:@"SECTORNAME"];
-            NSUInteger tSecNameIndex = [columns indexOfObject:@"SECNAME"];
-            NSUInteger tNotesIndex = [columns indexOfObject:@"NOTES"];
-            NSArray *infoRows = [secInfos valueForKey:@"data"];
-            for (NSArray *infoRow in infoRows) {
-                GIMinisession *s = [self.minisessions valueForKey:[infoRow objectAtIndex:tTickerIndex]];
-                if (s.secName == nil) {
-                    s.sectorName = [infoRow objectAtIndex:tSectorNameIndex];
-                    s.secName = [infoRow objectAtIndex:tSecNameIndex];
-                    s.notes = [infoRow objectAtIndex:tNotesIndex];
-                    s.buy = [[infoRow objectAtIndex:tAuctionTypeIndex] hasPrefix:@"B"];
+            @try {
+                NSArray *columns = [secInfos valueForKey:@"columns"];
+                NSUInteger tTickerIndex = [columns indexOfObject:@"TICKER"];
+                NSUInteger tTradingStatusIndex = [columns indexOfObject:@"TRADINGSTATUS"];
+                NSUInteger tSessionStateIndex = [columns indexOfObject:@"SESSIONSTATE"];
+                NSUInteger tAuctionTypeIndex = [columns indexOfObject:@"AUCTIONTYPE"];
+                NSUInteger tSectorNameIndex = [columns indexOfObject:@"SECTORNAME"];
+                NSUInteger tSecNameIndex = [columns indexOfObject:@"SECNAME"];
+                NSUInteger tNotesIndex = [columns indexOfObject:@"NOTES"];
+                NSArray *infoRows = [secInfos valueForKey:@"data"];
+                for (NSArray *infoRow in infoRows) {
+                    GIMinisession *s = [self.minisessions valueForKey:[infoRow objectAtIndex:tTickerIndex]];
+                    if (s.secName == nil) {
+                        s.sectorName = [infoRow objectAtIndex:tSectorNameIndex];
+                        s.secName = [infoRow objectAtIndex:tSecNameIndex];
+                        s.notes = [infoRow objectAtIndex:tNotesIndex];
+                        s.buy = [[infoRow objectAtIndex:tAuctionTypeIndex] hasPrefix:@"B"];
+                    }
+                    NSString *status = [infoRow objectAtIndex:tTradingStatusIndex];
+                    switch ([status characterAtIndex:0]) {
+                        case 'O':
+                            s.tradingStatus = tsOpening;
+                            break;
+                        case 'C':
+                            s.tradingStatus = tsCanceled;
+                            break;
+                        case 'F':
+                            s.tradingStatus = tsClosing;
+                            break;
+                        case 'B':
+                            s.tradingStatus = tsBreak;
+                            break;
+                        case 'T':
+                            s.tradingStatus = tsTrading;
+                            break;
+                        default:
+                            s.tradingStatus = tsNA;
+                            break;
+                    }
                 }
-                NSString *status = [infoRow objectAtIndex:tTradingStatusIndex];
-                switch ([status characterAtIndex:0]) {
-                    case 'O':
-                        s.tradingStatus = tsOpening;
-                        break;
-                    case 'C':
-                        s.tradingStatus = tsCanceled;
-                        break;
-                    case 'F':
-                        s.tradingStatus = tsClosing;
-                        break;
-                    case 'B':
-                        s.tradingStatus = tsBreak;
-                        break;
-                    case 'T':
-                        s.tradingStatus = tsTrading;
-                        break;
-                    default:
-                        s.tradingStatus = tsNA;
-                        break;
-                }
+            }
+            @catch (NSException *exception) {
+                NSLog(@"^^^^^^^^^SECINFOS: %@", secInfos);
             }
         }
         if ((times) || (secInfos))
@@ -340,28 +345,22 @@ static NSString *kStatusMessage15 = @"";
         case scCONNECTED: {
             self.state = csConnected;
 #warning parse out account data in f.jsonString
+            [self.channel scheduleSubscriptionRequest:@"syslog" Param:nil Success:^(StompFrame *f) {
+                NSLog(@"SYSLOG MESSAGE: %@", f.message);
+                NSLog(@"SYSLOG MESSAGE: %@", f.jsonData);
+            } Failure:^(NSString *errorMessage) {
+                [this disconnectWithMessage:[NSString stringWithFormat:kStatusMessage09, errorMessage, nil]];
+            }];
             [self.channel.writer sendGetTickers:kDefaultSubscriptionParam];
-            //[self.channel scheduleSubscriptionRequest:@"lasttrades" Param:[NSString stringWithFormat:@"ticker='%@'", @"MXZERNO.GSEL.LOT121025010", nil]];
             [self.channel scheduleSubscriptionRequest:@"tradetime" Param:kDefaultSubscriptionParam Success:^(StompFrame *f) {
                 if (this.tradeTimeLists)
                     this.tradeTimeLists = @[this.tradeTimeLists, f.jsonData];
                 else
                     this.tradeTimeLists = @[f.jsonData];
-                //[this.channel unsubscribe:@"tradetime" Param:@"marketplace=MXZERNO"];
                 [this addUnparsedLists];
             } Failure:^(NSString *errorMessage) {
                 [this disconnectWithMessage:[NSString stringWithFormat:kStatusMessage08, errorMessage, nil]];
             }];//[NSString stringWithFormat:@"ticker='%@'", @"MXZERNO.GSEL.LOT121025101" /*@"MXZERNO.GSEL.LOT121025010"*/, nil]];
-            [self.channel scheduleSubscriptionRequest:@"systime" Param:kDefaultSubscriptionParam Success:^(StompFrame *f) {
-                //this.tradeTimeList = f.jsonData;
-                //[this.channel unsubscribe:@"tradetime" Param:@"marketplace=MXZERNO"];
-                //if (this.tickerList)
-                    //[this buildMiniSessionsTable];
-                if ([this enoughTimeData:f.jsonData])
-                    [this.channel unsubscribe:@"systime" Param:@"marketplace=MXZERNO"];
-            } Failure:^(NSString *errorMessage) {
-                [this disconnectWithMessage:[NSString stringWithFormat:kStatusMessage07, errorMessage, nil]];
-            }];
             [self.channel scheduleSubscriptionRequest:@"minisessions" Param:kDefaultSubscriptionParam Success:^(StompFrame *f) {
                 if (this.secInfoLists)
                     this.secInfoLists = @[this.secInfoLists, f.jsonData];
@@ -371,10 +370,15 @@ static NSString *kStatusMessage15 = @"";
                     else {
                         NSLog(@"Minisession loading problem.");
                     }
-                //[this.channel unsubscribe:@"tradetime" Param:@"marketplace=MXZERNO"];
                 [this addUnparsedLists];
             } Failure:^(NSString *errorMessage) {
                 [this disconnectWithMessage:[NSString stringWithFormat:kStatusMessage06, errorMessage, nil]];
+            }];
+            [self.channel scheduleSubscriptionRequest:@"systime" Param:kDefaultSubscriptionParam Success:^(StompFrame *f) {
+                if ([this enoughTimeData:f.jsonData])
+                    [this.channel unsubscribe:@"systime" Param:@"marketplace=MXZERNO"];
+            } Failure:^(NSString *errorMessage) {
+                [this disconnectWithMessage:[NSString stringWithFormat:kStatusMessage07, errorMessage, nil]];
             }];
             break;
         }
@@ -382,6 +386,8 @@ static NSString *kStatusMessage15 = @"";
             if ([f.destination isEqualToString:@"list"]) { // tickers
                 this.tickerList = f.jsonData;
                 [this addUnparsedLists];
+            } else {
+                NSLog(@"OTHER REPLY: %@", f.jsonData);
             }
             break;
         case scCLOSED:

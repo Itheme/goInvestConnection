@@ -31,6 +31,8 @@
     [headers addEntriesFromDictionary: @{@"destination" : destination}];
     if (selector)
         [headers addEntriesFromDictionary: @{@"selector" : selector}];
+    else
+        [headers setValue:nil forKey:@"session"];
     StompFrame *f = [[StompFrame alloc] initWithCommand:sc Headers:headers];
     
     NSURL *url = [NSURL URLWithString:[self.channel.status sessioned:method] relativeToURL:self.channel.targetURL];

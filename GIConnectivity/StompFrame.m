@@ -185,6 +185,10 @@ static char contentLengthHeader[] = "content-length:";
                                 v = [line headerValueForName:@"subscription:"];
                                 if (v)
                                     this.subscription = v;
+                                else {
+                                    //@"message-id:"
+                                    //NSLog(@"UNKNOWN HEADER: %@", line);
+                                }
                             }
                         }
                     }

@@ -59,6 +59,9 @@ static char cspInvSID[] = "Invalid session ID";//{'S', 'e', 's', 's', 'i', 'o', 
 - (void) cfStreamRun:(NSURL *)url {
     CFURLRef cfURL = (__bridge CFURLRef)url;
     self.httpMessageRef = CFHTTPMessageCreateRequest(NULL, CFSTR("GET"), cfURL, kCFHTTPVersion1_0);
+    if (seqnum > 0)
+        CFHTTPMessageSetHeaderFieldValue(self.httpMessageRef, (__bridge CFStringRef)@"X-CspHub-Seqnum",  (__bridge CFStringRef)[NSString stringWithFormat:@"%d", seqnum, nil])
+        ;
     CFReadStreamRef stream = CFReadStreamCreateForHTTPRequest(CFAllocatorGetDefault(), httpMessageRef);
     if (!CFReadStreamOpen(stream)) {
         CFStreamError myErr = CFReadStreamGetError(stream);
@@ -295,7 +298,7 @@ static char cspInvSID[] = "Invalid session ID";//{'S', 'e', 's', 's', 'i', 'o', 
     if (len == 0) return 0;
     if (self.closed) return 0;
     NSString *s = [[NSString alloc] initWithBytes:buffer length:len encoding:NSUTF8StringEncoding];
-    NSLog(@"rused: %d, written: "/*%@"*/, rused);//, s);
+    //NSLog(@"rused: %d, written: "/*%@"*/, rused);//, s);
     if (rused == 0) {
         int res = [self bufferHasStompFrame:buffer maxLength:len];
         if (res > 0) {

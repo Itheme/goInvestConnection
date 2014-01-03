@@ -23,6 +23,8 @@
 @property (nonatomic, retain) NSString *subscriptionId;
 
 - (id) initWithParam:(NSString *) p Success:(StompSuccessBlock) successBlock Failure:(StompFailureBlock) failureBlock receipt:(NSString *)rec;
+- (id) initWithParam:(NSString *) p Receipt:(NSString *)rec;
+
 - (void) touch;
 
 @end
@@ -209,6 +211,13 @@
     FrameRequest *fr = nil;
     //if (successBlock || failureBlock)
     NSString *rec = [self generateSubsReceipt];
+    //FrameRequest *fakeFrame = [[FrameRequest alloc] initWithParam:param Receipt:rec];
+    NSLog(@"****NEW SUBSCRIPTION RECEIPT: %@ FOR %@ ****", rec, table);
+    /*NSMutableDictionary *d = [pendingRequests valueForKey:table];
+    if (d)
+        [d setValue:fakeFrame forKey:rec];
+    else
+        [pendingRequests setValue:[@{rec : fakeFrame} mutableCopy] forKey:table];*/
     fr = [[FrameRequest alloc] initWithParam:param Success:successBlock Failure:failureBlock receipt:rec];
     fr.subscriptionId = [self addPendingSubsRequest:fr Table:table];
     [self.writer sendSubscribe:table Param:param Receipt:rec SubscriptionId:fr.subscriptionId];
@@ -292,6 +301,7 @@
         if (subsId)
             return;
     }
+    BOOL rc = NO;
     NSMutableDictionary *d = [self.pendingRequests valueForKey:f.destination];
     if (d) {
         if (f.receipt) {
@@ -302,7 +312,6 @@
                 return;
             }
         }
-    #warning ticker subscription here too!
         int c = [d count];
         if (c > 1)
             NSLog(@"Skipping message %@ (r1)", f.receipt);
@@ -316,11 +325,38 @@
                 } else
                     if (frq.success)
                         frq.success(f);
-    #warning other types too!
             } else
                 NSLog(@"Skipping message %@ (r2)", f.receipt);
             return;
-        }
+        rc = YES;
+    } else
+        if ((f.receipt) && (f.destination == nil))
+            if ((![f.receipt isEqualToString:@"connectRec"]) && (![f.receipt isEqualToString:@"tickersReceipt"])) {
+                __block FrameRequest *frq = nil;
+                __block NSString *dest = nil;
+                [self.subscriptions enumerateKeysAndObjectsUsingBlock:^(id key, id obj, BOOL *stop) {
+                    NSDictionary *d = obj;
+                    [d enumerateKeysAndObjectsUsingBlock:^(id key, id obj, BOOL *stop) {
+                        if ([((FrameRequest *)obj).receipt isEqualToString:f.receipt]) {
+                            frq = obj;
+                            *stop = YES;
+                        }
+                    }];
+                    if (frq) {
+                        dest = key;
+                        *stop = YES;
+                    }
+                }];
+                if (frq) {
+                    if (f.command == scRECEIPT) {
+                        [frq touch];
+                        NSLog(@"::::::::::::Skipping receipt %@ (%@)", f.receipt, dest);
+                        return;
+                    } else
+                        NSLog(@":::::::::::: %@ for %@", f.message, f.receipt);
+                } else
+                    NSLog(@"HEY! Lost request: %@", f.receipt);
+            }
     d = [self.subscriptions valueForKey:f.destination];
     if (d) {
         if (f.subscription) {
@@ -332,7 +368,10 @@
                 return;
             }
         }
-    }
+    } else
+        if (f.subscription)
+            NSLog(@"HEY! Lost subscription: %@", f.receipt);
+
     [self.clie gotFrame:f];
 }
 
@@ -372,6 +411,24 @@
     }
     return self;
 }
+
+#warning Make it a separate class
+- (id) initWithParam:(NSString *) p Receipt:(NSString *)rec {
+    self = [super init];
+    if (self) {
+        self.param = p;
+        self.success = ^(StompFrame *f) {
+            NSLog(@"--------------");
+        };
+        self.failure = ^(NSString *errorMessage) {
+            NSLog(@"-------------- %@", errorMessage);
+        };
+        self.receipt = rec;
+        [self touch];
+    }
+    return self;
+}
+
 
 - (void) touch {
     
